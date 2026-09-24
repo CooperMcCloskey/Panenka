@@ -1,11 +1,7 @@
 import type { RigidBody, GameState } from './types';
 
-export function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function lerpBody(a: RigidBody, b: RigidBody, t: number): RigidBody {
-  return { ...b, x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+function lerpBody<T extends RigidBody>(a: T, b: T, t: number): T {
+  return { ...b, pos: a.pos.lerp(b.pos, t) };
 }
 
 export function interpolateState(prev: GameState, next: GameState, alpha: number): GameState {

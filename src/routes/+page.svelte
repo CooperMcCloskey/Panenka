@@ -13,8 +13,8 @@
     font-size: 3em;
   }
   a{
-    border: 2px solid var(--cream);
-    color: var(--cream);
+    border: 2px solid var(--white);
+    color: var(--white);
     border-radius: 4px;
     margin: 4px;
     width: 40%;

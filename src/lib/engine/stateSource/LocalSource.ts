@@ -1,6 +1,7 @@
 import { MAX_FRAME_MS, TICK_MS } from '../constants';
 import { interpolateState } from '../interpolate';
-import { createState, step } from '../step';
+import { createState } from '../state';
+import { step } from '../step';
 import type { Controller, GameState } from '../types';
 import type { StateSource } from './StateSource';
 
@@ -14,13 +15,8 @@ export class LocalSource implements StateSource {
     this.prev = this.state;
   }
 
-  start() {
-    this.controllers.forEach((c) => c.attach?.());
-  }
-
-  stop() {
-    this.controllers.forEach((c) => c.detach?.());
-  }
+  start() { this.controllers.forEach((c) => c.attach?.()) }
+  stop() { this.controllers.forEach((c) => c.detach?.()) }
 
   update(dtMs: number) {
     this.acc += Math.min(dtMs, MAX_FRAME_MS);
