@@ -1,6 +1,6 @@
 <script lang="ts">
-  import '$lib/variables.css'
-	import '$lib/global.css'
+  import '$lib/styling/global.css'
+	import '$lib/styling/variables.css'
 	import favicon from '$lib/assets/favicon.svg'; //TODO: replace
 
 	let { children } = $props();

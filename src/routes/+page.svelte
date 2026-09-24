@@ -8,9 +8,7 @@
   <a href="./online">Online</a>
 </MainMenu>
 
-
 <style>
-
   h1{
     font-size: 3em;
   }

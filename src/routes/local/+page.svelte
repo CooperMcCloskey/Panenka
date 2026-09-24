@@ -1,8 +1,10 @@
 <script lang="ts">
-    import MainMenu from "../../components/MainMenu.svelte";
+  import { resolve } from "$app/paths";
+  import MainMenu from "../../components/MainMenu.svelte";
 
 </script>
 
+<!-- Later this menu will be where you can choose to play against AI -->
 <MainMenu>
   <h1>Local Game</h1>
   <div id="playerList">
@@ -17,7 +19,7 @@
       <p>O, K, L, ;, Enter</p>
     </div>
   </div>
-  <a href="../match">Start Game</a>
+  <a href={resolve("/lobby/local")}>Start Game</a>
     
 </MainMenu>
 
