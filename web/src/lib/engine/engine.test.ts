@@ -57,7 +57,7 @@ function fingerprint(): number {
 
 describe('engine', () => {
   it('matches the recorded fingerprint', () => {
-    expect(fingerprint()).toBe(673456755);
+    expect(fingerprint()).toBe(346816436);
   });
 
   it('encodes every action to a unique index and back', () => {

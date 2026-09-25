@@ -1,13 +1,16 @@
-// Writes physics trajectories for the RL port's parity tests to rl/fixtures/physics.json.
+// Writes physics trajectories and goal checks for the RL port's parity tests to rl/fixtures/physics.json.
 // Run with `npm run fixtures` after any engine change.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACTION_COUNT, decodeAction, encodeAction, IDLE } from '../src/lib/engine/actions';
 import * as constants from '../src/lib/engine/constants';
-import { BALL_RADIUS, CENTER_X, CENTER_Y, MAX_BALL_SPEED } from '../src/lib/engine/constants';
+import {
+  BALL_RADIUS, CENTER_X, CENTER_Y, MAX_BALL_SPEED, PITCH_LEFT, PITCH_RIGHT, WORLD_HEIGHT, WORLD_WIDTH,
+} from '../src/lib/engine/constants';
 import { physicsStep } from '../src/lib/engine/physics';
-import { BALL_WALLS, PLAYER_WALLS, POSTS, type Wall } from '../src/lib/engine/stadium';
+import { goalScoredBy } from '../src/lib/engine/rules';
+import { BALL_WALLS, GOAL_BOTTOM, GOAL_TOP, PLAYER_WALLS, POSTS, type Wall } from '../src/lib/engine/stadium';
 import { kickoffWorld } from '../src/lib/engine/state';
 import type { Action, World } from '../src/lib/engine/types';
 import { vec, type Vec2 } from '../src/lib/engine/vec';
@@ -95,6 +98,18 @@ const cases = [
   ]),
 ];
 
+// Ball positions on and just either side of every goal boundary.
+const EPS = 1e-9;
+const around = (v: number) => [v - EPS, v, v + EPS];
+const goalXs = [0, ...around(PITCH_LEFT - BALL_RADIUS), CENTER_X, ...around(PITCH_RIGHT + BALL_RADIUS), WORLD_WIDTH];
+const goalYs = [0, ...around(GOAL_TOP), CENTER_Y, ...around(GOAL_BOTTOM), WORLD_HEIGHT];
+const goals = goalXs.flatMap((x) =>
+  goalYs.map((y) => {
+    const scorer = goalScoredBy({ pos: vec(x, y), vel: vec() });
+    return [x, y, scorer === 'blue' ? 1 : scorer === 'orange' ? -1 : 0];
+  }),
+);
+
 const fixture = {
   description: 'physicsStep trajectories from the TypeScript engine (web/src/lib/engine). states[t] is the world after applying actions[t].',
   constants: Object.fromEntries(Object.entries(constants).filter(([, v]) => typeof v === 'number')),
@@ -104,6 +119,7 @@ const fixture = {
     posts: POSTS.map((p) => [p.x, p.y]),
   },
   action_encoding: 'index = (moveX + 1) * 6 + (moveY + 1) * 2 + kick',
+  goals, // [ball x, ball y, scorer]: 1 blue, -1 orange, 0 nobody
   cases,
 };
 

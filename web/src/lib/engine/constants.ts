@@ -56,3 +56,5 @@ export const CENTER_Y = WORLD_HEIGHT / 2
 export const GOAL_WIDTH = 0.33 // between post centers
 export const GOAL_DEPTH = BALL_MARGIN // so a ball in the net can reach the world edge
 export const POST_RADIUS = 0.012
+
+export const KICKOFF_SPACING = 0.2 // vertical gap between teammates at kickoff

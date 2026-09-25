@@ -7,7 +7,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from panenka import ACTION_COUNT, IDLE, World, decode_action, encode_action, kickoff_world, physics_step
+from panenka import (
+    ACTION_COUNT, IDLE, World, decode_action, encode_action, goal_scored_by, kickoff_world, physics_step,
+)
 from panenka import constants, stadium
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "physics.json").read_text())
@@ -67,6 +69,15 @@ def test_action_encoding():
     assert move[IDLE].tolist() == [0, 0] and not kick[IDLE]
 
 
+def test_goal_scored_by():
+    with jax.enable_x64(True):  # the boundary points are 1e-9 apart
+        goals = np.array(FIXTURE["goals"])
+        actual = np.asarray(goal_scored_by(jnp.array(goals[:, :2])))
+        wrong = goals[actual != goals[:, 2]]
+        assert not len(wrong), f"[x, y, expected scorer]: {wrong.tolist()}"
+        assert set(goals[:, 2]) == {-1, 0, 1}  # the fixture covers every outcome
+
+
 @pytest.mark.parametrize("name", [name for name in CASES if name.endswith("chase")])
 def test_kickoff(name):
     with jax.enable_x64(True):
@@ -89,6 +100,6 @@ def test_step_float64(name):
 
 @pytest.mark.parametrize("name", CASES)
 def test_step_float32(name):
-    """Training runs in float32. Bodies separating from almost the same point (teammates stacked at
-    kickoff) amplify its rounding error, hence the looser tolerance."""
+    """Training runs in float32. When two bodies barely touch, its rounding can decide whether they
+    collide, and a collision applies a whole bounce, hence the looser tolerance."""
     assert_worlds_close(*step_each_tick(CASES[name]), atol=1e-4, name=name)
