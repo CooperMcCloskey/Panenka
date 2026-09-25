@@ -17,7 +17,6 @@
   });
 </script>
 
-<!-- TODO: design -->
 <header>
   <span class="blue">{score.blue}</span>
   <span>

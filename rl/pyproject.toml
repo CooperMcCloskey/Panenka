@@ -1,0 +1,22 @@
+[project]
+name = "panenka"
+version = "0.1.0"
+description = "Panenka physics in JAX, for multi-agent RL"
+readme = "README.md"
+authors = [
+    # TODO: Michael put yourself here
+    { name = "CooperdMcCloskey", email = "cooper@coopermccloskey.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "jax>=0.11.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

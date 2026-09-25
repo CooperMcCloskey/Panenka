@@ -23,3 +23,11 @@ Layout of `web/src/lib/`:
 - `shared/` — not tied to the browser, so a future game server can reuse it: `Controller`, `LocalSource`, state codec.
 - `client/` — browser only: keyboard controller and key bindings.
 - `render/` — canvas drawing.
+
+## RL
+
+```sh
+cd rl
+uv sync
+uv run pytest      # physics parity with the web engine
+```
