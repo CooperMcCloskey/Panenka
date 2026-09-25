@@ -1,22 +1,32 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import type { StateSource } from '$lib/engine/stateSource/StateSource';
-  import { fitCanvas, loadColors, render } from '$lib/render';
+  import { onMount, untrack } from 'svelte';
+  import type { StateSource } from '$lib/client/match';
+  import { fitCanvas, render } from '$lib/render';
+  import MatchHeader from './MatchHeader.svelte';
 
-  let { source }: { source: StateSource } = $props();
+  // onEnd is called END_DELAY_MS after the match has a winner.
+  let { source, onEnd }: { source: StateSource; onEnd?: () => void } = $props();
+  const END_DELAY_MS = 3000;
 
-  let wrapper: HTMLDivElement;
+  let canvasArea: HTMLDivElement;
   let canvas: HTMLCanvasElement;
+  let game = $state.raw(untrack(() => source.currentState()));
+  const over = $derived(game.winner !== null); // a boolean, so the effect below runs once, not every frame
+
+  $effect(() => {
+    if (!over || !onEnd) return;
+    const timer = setTimeout(onEnd, END_DELAY_MS);
+    return () => clearTimeout(timer);
+  });
 
   onMount(() => {
     const ctx = canvas.getContext('2d')!;
-    loadColors(canvas);
-    let scale = 1; // CSS pixels per world unit
+    let scale = 1;
 
     const observer = new ResizeObserver(([entry]) => {
       scale = fitCanvas(canvas, entry.contentRect.width, entry.contentRect.height);
     });
-    observer.observe(wrapper);
+    observer.observe(canvasArea);
 
     let last = performance.now();
     let raf: number;
@@ -24,7 +34,8 @@
     function frame(now: number) {
       source.update(now - last);
       last = now;
-      render(ctx, source.currentState(), scale);
+      game = source.currentState();
+      render(ctx, game, scale);
       raf = requestAnimationFrame(frame);
     }
 
@@ -39,20 +50,34 @@
   });
 </script>
 
-<div id="canvasWrapper" bind:this={wrapper}>
-  <canvas id="matchCanvas" bind:this={canvas}></canvas>
+<div id="matchWrapper">
+  <div id="headerArea">
+    <MatchHeader {game} />
+  </div>
+  <div id="canvasArea" bind:this={canvasArea}>
+    <canvas id="matchCanvas" bind:this={canvas}></canvas>
+  </div>
 </div>
 
 <style>
-  #canvasWrapper{
+  #matchWrapper{
     position: absolute;
     inset: 0;
-    padding: 10vh 5%; /* canvas fits within the middle 90% of the width and 80% of the height */
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
     background: var(--green1);
   }
+  #headerArea{
+    flex: 0 0 12vh;
+  }
+  #canvasArea{
+    flex: 1;
+    min-height: 0; /* lets the area shrink, so the ResizeObserver sees the real space */
+    padding: 0 5% 5vh;
+    display: grid;
+    place-items: center;
+  }
   #matchCanvas{
-    pointer-events: none; /* right-click shows the page menu, not the image one (input is keyboard-only) */
+    pointer-events: none; /* right-click shows the page menu instead of the image menu */
   }
 </style>

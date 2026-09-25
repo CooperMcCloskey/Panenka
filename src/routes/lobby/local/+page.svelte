@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { DEFAULT_PLAYER1_CONTROLS, DEFAULT_PLAYER2_CONTROLS } from "$lib/engine/constants";
-  import { KeyboardController } from "$lib/engine/controllers/KeyboardController";
-  import { LocalSource } from "$lib/engine/stateSource/LocalSource";
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
+  import { page } from "$app/state";
+  import { KeyboardController, loadControls } from "$lib/client/keyboard";
+  import { LocalSource } from "$lib/client/match";
+  import { rulesFromParams } from "$lib/engine/rules";
   import Match from "../../../components/Match.svelte";
-  const controllers = [new KeyboardController(DEFAULT_PLAYER1_CONTROLS), new KeyboardController(DEFAULT_PLAYER2_CONTROLS)] //TODO: make controls customizeable?
-  const source = new LocalSource(controllers);
+
+  const controllers = loadControls().map((c) => new KeyboardController(c));
+  const source = new LocalSource(controllers, rulesFromParams(page.url.searchParams));
 </script>
-<Match {source}></Match>
+
+<Match {source} onEnd={() => goto(resolve("/local"))} />

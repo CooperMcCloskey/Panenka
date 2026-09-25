@@ -3,12 +3,8 @@ import {
   PITCH_WIDTH, POST_RADIUS,
 } from '$lib/engine/constants';
 import { GOAL_BOTTOM, GOAL_TOP } from '$lib/engine/stadium';
-import { colors } from './colors';
-import { circle } from './shapes';
-import { LINE_WIDTH, OUTLINE_WIDTH } from './style';
+import { circle, colors, LINE_WIDTH, OUTLINE_WIDTH } from './style';
 import { VIEW_H, VIEW_PAD, VIEW_W } from './view';
-
-// The static pitch: grass, markings, goals. Nothing here depends on the game state.
 
 const STRIPES = 9;
 const CENTER_CIRCLE_RADIUS = PITCH_HEIGHT * 0.15;
@@ -34,7 +30,6 @@ function drawGrass(ctx: CanvasRenderingContext2D) {
 function drawLines(ctx: CanvasRenderingContext2D) {
   ctx.strokeStyle = colors.pitchLines;
   ctx.lineWidth = LINE_WIDTH;
-  // Lines are centered on the pitch edge, where the ball's walls and the posts are.
   ctx.strokeRect(PITCH_LEFT, PITCH_TOP, PITCH_WIDTH, PITCH_HEIGHT);
 
   ctx.beginPath();
@@ -47,7 +42,6 @@ function drawLines(ctx: CanvasRenderingContext2D) {
   ctx.stroke();
 }
 
-// A net box behind each goal line: blue defends the left, orange the right.
 function drawGoals(ctx: CanvasRenderingContext2D) {
   ctx.lineWidth = OUTLINE_WIDTH;
 
@@ -55,7 +49,6 @@ function drawGoals(ctx: CanvasRenderingContext2D) {
     const mouthX = side === -1 ? PITCH_LEFT : PITCH_RIGHT;
     const backX = mouthX + side * GOAL_DEPTH;
 
-    // Net: shaded inside, outlined on the back and both sides (open at the mouth)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
     ctx.fillRect(Math.min(mouthX, backX), GOAL_TOP, GOAL_DEPTH, GOAL_WIDTH);
     ctx.strokeStyle = colors.black;

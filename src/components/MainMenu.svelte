@@ -1,5 +1,5 @@
 <script lang="ts">
-  const {children} = $props();
+  const { children } = $props();
 </script>
 
 <main>
@@ -13,8 +13,8 @@
     justify-content: center;
     align-items: center;
     position: absolute;
-    min-width: var(--min-width, 45vw);
-    min-height: var(--min-height, 45vh);
+    min-width: 45vw;
+    min-height: 45vh;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
