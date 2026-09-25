@@ -1,41 +1,7 @@
-import type { Action } from '$lib/engine/types';
-import type { Controller } from './match';
-
 export const CONTROL_ACTIONS = ['up', 'left', 'down', 'right', 'kick'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 export type KeyboardControls = Record<ControlAction, string>; // KeyboardEvent.code per action
 export type PlayerControls = [KeyboardControls, KeyboardControls];
-
-export class KeyboardController implements Controller {
-  private held = new Set<string>();
-
-  constructor(private controls: KeyboardControls) {}
-
-  getAction(): Action {
-    const key = (code: string) => (this.held.has(code) ? 1 : 0);
-    const { up, left, down, right, kick } = this.controls;
-    return {
-      moveX: (key(right) - key(left)) as Action['moveX'],
-      moveY: (key(down) - key(up)) as Action['moveY'],
-      kick: this.held.has(kick),
-    };
-  }
-
-  private onKeyDown = (e: KeyboardEvent) => this.held.add(e.code);
-  private onKeyUp = (e: KeyboardEvent) => this.held.delete(e.code);
-
-  attach() {
-    addEventListener('keydown', this.onKeyDown);
-    addEventListener('keyup', this.onKeyUp);
-  }
-
-  detach() {
-    removeEventListener('keydown', this.onKeyDown);
-    removeEventListener('keyup', this.onKeyUp);
-  }
-}
-
-// Bindings -------------------------------------------------------------------
 
 const STORAGE_KEY = 'panenka.controls';
 

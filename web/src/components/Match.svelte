@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import type { StateSource } from '$lib/client/match';
+  import type { StateSource } from '$lib/shared/sources';
   import { fitCanvas, render } from '$lib/render';
   import MatchHeader from './MatchHeader.svelte';
 
@@ -11,7 +11,7 @@
   let canvasArea: HTMLDivElement;
   let canvas: HTMLCanvasElement;
   let game = $state.raw(untrack(() => source.currentState()));
-  const over = $derived(game.winner !== null); // a boolean, so the effect below runs once, not every frame
+  const over = $derived(game.match.winner !== null); // a boolean, so the effect below runs once, not every frame
 
   $effect(() => {
     if (!over || !onEnd) return;

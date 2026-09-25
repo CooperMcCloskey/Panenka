@@ -3,6 +3,7 @@
 export const TICK_RATE = 60; // ticks per second
 export const TICK_MS = 1000 / TICK_RATE;
 export const MAX_FRAME_MS = 250; // longer frames (e.g. a backgrounded tab) are cut short instead of simulated
+export const SUBSTEPS = 4; // movement and collisions per tick
 
 // Mechanics ------------------------------------------------------------------
 // Each tick: vel = (vel + FORCE / mass) * DAMPING, so top speed = (FORCE / mass) * DAMPING / (1 - DAMPING).
@@ -25,6 +26,7 @@ export const BALL_MASS = 0.2
 export const BALL_DAMPING = 0.98
 export const BALL_ELASTICITY = 0.8
 export const BALL_RADIUS = 0.015
+export const MAX_BALL_SPEED = 0.025 // with SUBSTEPS, keeps each substep under half a ball radius so it can't tunnel
 
 export const WALL_ELASTICITY = 1
 export const NET_ELASTICITY = 0.1

@@ -5,12 +5,12 @@
 
   let { game }: { game: GameState } = $props();
 
-  const { score, phase, rules, winner } = $derived(game);
+  const { score, phase, rules, winner } = $derived(game.match);
   const goalScorer = $derived(phase.kind === 'goal' ? phase.scorer : null);
   const countdown = $derived(phase.kind === 'countdown' ? Math.ceil(phase.ticksLeft / TICK_RATE) : null);
   const goalTarget = $derived(rules.kind === 'goals' ? rules.target : null);
   const clock = $derived.by(() => {
-    const ticks = ticksRemaining(game);
+    const ticks = ticksRemaining(game.match);
     if (ticks === null) return null;
     const seconds = Math.ceil(ticks / TICK_RATE);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;

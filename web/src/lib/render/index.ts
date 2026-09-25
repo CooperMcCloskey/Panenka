@@ -1,4 +1,5 @@
-import { KICK_COOLDOWN } from '$lib/engine/constants';
+import { BALL_RADIUS, KICK_COOLDOWN, PLAYER_RADIUS } from '$lib/engine/constants';
+import { canKick } from '$lib/engine/physics';
 import type { GameState, Player } from '$lib/engine/types';
 import { drawPitch } from './pitch';
 import { circle, colors, OUTLINE_WIDTH } from './style';
@@ -11,17 +12,17 @@ export { fitCanvas } from './view';
 const KICK_FLASH_TICKS = 5;
 
 const showKickOutline = (p: Player) =>
-  p.kicking || (p.kickCooldown > 0 && KICK_COOLDOWN - p.kickCooldown < KICK_FLASH_TICKS);
+  canKick(p) || (p.kickCooldown > 0 && KICK_COOLDOWN - p.kickCooldown < KICK_FLASH_TICKS);
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState, scale: number) {
   applyWorldTransform(ctx, scale);
   drawPitch(ctx);
 
   ctx.lineWidth = OUTLINE_WIDTH;
-  for (const [i, p] of state.players.entries()) {
+  const { players, ball } = state.world;
+  for (const [i, p] of players.entries()) {
     const fill = i % 2 === 0 ? colors.blue : colors.orange;
-    circle(ctx, p.pos.x, p.pos.y, p.radius, fill, showKickOutline(p) ? colors.white : colors.black);
+    circle(ctx, p.pos.x, p.pos.y, PLAYER_RADIUS, fill, showKickOutline(p) ? colors.white : colors.black);
   }
-  const { pos, radius } = state.ball;
-  circle(ctx, pos.x, pos.y, radius, colors.white, colors.black);
+  circle(ctx, ball.pos.x, ball.pos.y, BALL_RADIUS, colors.white, colors.black);
 }

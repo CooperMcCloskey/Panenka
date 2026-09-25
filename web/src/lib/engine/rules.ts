@@ -1,6 +1,6 @@
 import { BALL_RADIUS, PITCH_LEFT, PITCH_RIGHT, TICK_RATE } from './constants';
 import { GOAL_BOTTOM, GOAL_TOP } from './stadium';
-import type { GameState, MatchRules, RigidBody, Team } from './types';
+import type { Body, Match, MatchRules, Team } from './types';
 
 export const DEFAULT_MINUTES = 5;
 export const MAX_MINUTES = 60;
@@ -33,26 +33,26 @@ export function rulesToParams(rules: MatchRules): URLSearchParams {
 }
 
 // null for a goal-target match.
-export function ticksRemaining(state: GameState): number | null {
-  if (state.rules.kind !== 'time') return null;
-  return Math.max(0, state.rules.minutes * 60 * TICK_RATE - state.clock);
+export function ticksRemaining(match: Match): number | null {
+  if (match.rules.kind !== 'time') return null;
+  return Math.max(0, match.rules.minutes * 60 * TICK_RATE - match.clock);
 }
 
 // A goal counts once the whole ball is over the line.
-export function goalScoredBy(ball: RigidBody): Team | null {
+export function goalScoredBy(ball: Body): Team | null {
   if (ball.pos.y <= GOAL_TOP || ball.pos.y >= GOAL_BOTTOM) return null;
   if (ball.pos.x < PITCH_LEFT - BALL_RADIUS) return 'orange';
   if (ball.pos.x > PITCH_RIGHT + BALL_RADIUS) return 'blue';
   return null;
 }
 
-export function checkWinner(state: GameState): Team | 'draw' | null {
-  const { score, rules } = state;
+export function checkWinner(match: Match): Team | 'draw' | null {
+  const { score, rules } = match;
   if (rules.kind === 'goals') {
     if (score.blue >= rules.target) return 'blue';
     if (score.orange >= rules.target) return 'orange';
     return null;
   }
-  if (ticksRemaining(state)! > 0) return null;
+  if (ticksRemaining(match)! > 0) return null;
   return score.blue > score.orange ? 'blue' : score.orange > score.blue ? 'orange' : 'draw';
 }

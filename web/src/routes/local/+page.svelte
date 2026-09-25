@@ -4,7 +4,7 @@
   import {
     CONTROL_ACTIONS, defaultControls, keyLabel, loadControls, rebind, saveControls,
     type ControlAction, type PlayerControls,
-  } from "$lib/client/keyboard";
+  } from "$lib/client/bindings";
   import {
     clampInt, DEFAULT_GOAL_TARGET, DEFAULT_MINUTES, MAX_GOAL_TARGET, MAX_MINUTES, rulesToParams,
   } from "$lib/engine/rules";

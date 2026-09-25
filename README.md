@@ -1,42 +1,25 @@
-# sv
+# Panenka
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A football-style game, built to train multi-agent RL policies on.
 
-## Creating a project
+- `web/` — the game (SvelteKit). Local play now; online and play-vs-AI later.
+- `rl/` — training (Python). A port of the game engine plus the MARL experiments.
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
+## Web
 
 ```sh
-# recreate this project
-npx sv@0.17.1 create --template minimal --types ts --install npm Panenka
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+cd web
+npm install
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+npm test           # engine, codec and replay tests
+npm run fixtures   # regenerate rl/fixtures/physics.json after engine changes
+npm run build && node build   # production (Node, PORT defaults to 3000)
 ```
 
-## Building
+Layout of `web/src/lib/`:
 
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+- `engine/` — the simulation. Pure TypeScript, no browser or Node APIs; the reference for the Python port.
+  `physicsStep(world, actions)` is physics only; `step(state, actions)` adds match flow.
+- `shared/` — not tied to the browser, so a future game server can reuse it: `Controller`, `LocalSource`, state codec.
+- `client/` — browser only: keyboard controller and key bindings.
+- `render/` — canvas drawing.

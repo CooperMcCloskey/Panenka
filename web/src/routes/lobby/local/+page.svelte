@@ -2,8 +2,9 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
-  import { KeyboardController, loadControls } from "$lib/client/keyboard";
-  import { LocalSource } from "$lib/client/match";
+  import { loadControls } from "$lib/client/bindings";
+  import { KeyboardController } from "$lib/client/controllers";
+  import { LocalSource } from "$lib/shared/sources";
   import { rulesFromParams } from "$lib/engine/rules";
   import Match from "../../../components/Match.svelte";
 
