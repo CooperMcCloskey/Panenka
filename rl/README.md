@@ -13,8 +13,8 @@ uv run pytest    # parity with the TypeScript engine
 
 - `physics_step(world, actions)` advances one tick. It's pure, so it works under `jax.jit` and `jax.vmap`.
 - `World` holds ball and player positions/velocities, and per-player `kick_held`, `kick_used`,
-  `kick_cooldown` (mass and `can_kick` are derived from these). `kickoff_world(n)` makes the start:
-  even players are blue (defend the left goal), odd are orange.
+  `kick_cooldown` (mass and `can_kick` are derived from these). `kickoff_world(blue, orange)` makes the
+  start: players are listed blue team first (defends the left goal), then orange, so any NvM works.
 - Actions are indices 0–17: `(move_x + 1) * 6 + (move_y + 1) * 2 + kick` (`encode_action`, `decode_action`).
 - `goal_scored_by(ball_pos)` is 1 if blue scored, -1 if orange did, else 0. It's the only part of the
   match rules that's ported: the browser match flow (`Match`: phase, clock, goal pause, kickoff countdown,

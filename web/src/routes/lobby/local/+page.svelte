@@ -8,8 +8,8 @@
   import { rulesFromParams } from "$lib/engine/rules";
   import Match from "../../../components/Match.svelte";
 
-  const controllers = loadControls().map((c) => new KeyboardController(c));
-  const source = new LocalSource(controllers, rulesFromParams(page.url.searchParams));
+  const [blue, orange] = loadControls().map((c) => new KeyboardController(c));
+  const source = new LocalSource({ blue: [blue], orange: [orange] }, rulesFromParams(page.url.searchParams));
 </script>
 
 <Match {source} onEnd={() => goto(resolve("/local"))} />

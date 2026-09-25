@@ -15,7 +15,7 @@ function fingerprint(): number {
   const dirs = [-1, 0, 1] as const;
 
   const run = (rules: MatchRules, ticks: number) => {
-    let s = createState(4, rules);
+    let s = createState({ blue: 2, orange: 2 }, rules);
     let acts: Action[] = s.world.players.map(() => ({ moveX: 0, moveY: 0, kick: false }));
     const trace: unknown[] = [];
     for (let i = 0; i < ticks; i++) {
@@ -57,7 +57,7 @@ function fingerprint(): number {
 
 describe('engine', () => {
   it('matches the recorded fingerprint', () => {
-    expect(fingerprint()).toBe(346816436);
+    expect(fingerprint()).toBe(1269972389);
   });
 
   it('encodes every action to a unique index and back', () => {
@@ -72,15 +72,16 @@ describe('engine', () => {
 
   it('replays a recording to the same state', () => {
     const rules: MatchRules = { kind: 'goals', target: 2 };
+    const teams = { blue: 1, orange: 1 };
     let seed = 7;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
     const actions: number[][] = [];
-    let s: GameState = createState(2, rules);
+    let s: GameState = createState(teams, rules);
     for (let t = 0; t < 3000; t++) {
       const tick = [0, 1].map(() => Math.floor(rnd() * ACTION_COUNT));
       actions.push(tick);
       s = step(s, tick.map(decodeAction));
     }
-    expect(replay({ rules, playerCount: 2, actions })).toEqual(s);
+    expect(replay({ rules, teams, actions })).toEqual(s);
   });
 });

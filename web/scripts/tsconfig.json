@@ -1,0 +1,8 @@
+{
+	// Scripts run in Node (via tsx); the app in src/ doesn't get Node's types.
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"types": ["node"]
+	},
+	"include": ["./**/*.ts"]
+}

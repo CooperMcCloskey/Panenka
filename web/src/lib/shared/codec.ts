@@ -1,8 +1,9 @@
-import type { GameState, MatchRules, Phase, Player, Team } from '$lib/engine/types';
+import type { GameState, MatchRules, Phase, Player, Team, Teams } from '$lib/engine/types';
 import { vec } from '$lib/engine/vec';
 
 // Packs a game state into a Float64Array, e.g. for network snapshots (Float64 so decoding is exact).
-// Layout: 8 match values, 4 ball values, then 7 values per player. Rules aren't included: they don't change during a match.
+// Layout: 8 match values, 4 ball values, then 7 values per player. Rules and teams aren't included:
+// they don't change during a match.
 
 const MATCH = 8;
 const BALL = 4;
@@ -36,7 +37,7 @@ export function encodeState({ world, match }: GameState): Float64Array {
   return out;
 }
 
-export function decodeState(data: Float64Array, rules: MatchRules): GameState {
+export function decodeState(data: Float64Array, rules: MatchRules, teams: Teams): GameState {
   const [tick, clock, phaseKind, ticksLeft, scorer, blue, orange, winner] = data;
   const kind = PHASES[phaseKind];
   const phase: Phase =
@@ -56,6 +57,6 @@ export function decodeState(data: Float64Array, rules: MatchRules): GameState {
 
   return {
     world: { ball: { pos: vec(data[b], data[b + 1]), vel: vec(data[b + 2], data[b + 3]) }, players },
-    match: { tick, clock, phase, score: { orange, blue }, rules, winner: WINNERS[winner] },
+    match: { tick, clock, phase, score: { orange, blue }, rules, teams, winner: WINNERS[winner] },
   };
 }

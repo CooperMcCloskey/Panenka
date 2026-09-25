@@ -1,5 +1,6 @@
 import { BALL_RADIUS, KICK_COOLDOWN, PLAYER_RADIUS } from '$lib/engine/constants';
 import { canKick } from '$lib/engine/physics';
+import { teamOf } from '$lib/engine/state';
 import type { GameState, Player } from '$lib/engine/types';
 import { drawPitch } from './pitch';
 import { circle, colors, OUTLINE_WIDTH } from './style';
@@ -21,7 +22,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, scale: n
   ctx.lineWidth = OUTLINE_WIDTH;
   const { players, ball } = state.world;
   for (const [i, p] of players.entries()) {
-    const fill = i % 2 === 0 ? colors.blue : colors.orange;
+    const fill = colors[teamOf(state.match.teams, i)];
     circle(ctx, p.pos.x, p.pos.y, PLAYER_RADIUS, fill, showKickOutline(p) ? colors.white : colors.black);
   }
   circle(ctx, ball.pos.x, ball.pos.y, BALL_RADIUS, colors.white, colors.black);

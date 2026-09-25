@@ -1,6 +1,9 @@
 import type { Vec2 } from './vec';
 
-export type Team = 'blue' | 'orange'; // blue defends the left goal; players alternate blue, orange by index
+export type Team = 'blue' | 'orange'; // blue defends the left goal
+
+// Players per team. Players are listed blue team first, then orange.
+export type Teams = Record<Team, number>;
 
 // Radius, mass and elasticity are constants per body type (see constants.ts), not state.
 export interface Body {
@@ -42,6 +45,7 @@ export interface Match {
   phase: Phase;
   score: Record<Team, number>;
   rules: MatchRules;
+  teams: Teams;
   winner: Team | 'draw' | null;
 }
 

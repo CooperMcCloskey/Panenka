@@ -23,7 +23,7 @@ export function step(state: GameState, actions: Action[]): GameState {
     const ticksLeft = phase.ticksLeft - 1;
     if (ticksLeft > 0) return { world: next, match: { ...match, tick, phase: { ...phase, ticksLeft } } };
     return {
-      world: kickoffWorld(world.players.length),
+      world: kickoffWorld(match.teams),
       match: { ...match, tick, phase: { kind: 'countdown', ticksLeft: KICKOFF_COUNTDOWN_TICKS } },
     };
   }

@@ -3,7 +3,7 @@ import { MAX_FRAME_MS, TICK_MS } from '$lib/engine/constants';
 import type { Recording } from '$lib/engine/replay';
 import { createState } from '$lib/engine/state';
 import { step } from '$lib/engine/step';
-import type { Body, GameState, MatchRules } from '$lib/engine/types';
+import type { Body, GameState, MatchRules, Team } from '$lib/engine/types';
 import type { Controller } from './controller';
 
 // Where a match's state comes from: simulated locally, or (later) received from the server.
@@ -16,15 +16,18 @@ export interface StateSource {
 
 // Runs the simulation locally at a fixed tick rate.
 export class LocalSource implements StateSource {
+  private controllers: Controller[];
   private prev: GameState;
   private state: GameState;
   private acc = 0; // ms of real time not yet simulated
   readonly recording: Recording;
 
-  constructor(private controllers: Controller[], rules: MatchRules) {
-    this.state = createState(controllers.length, rules);
+  constructor(controllers: Record<Team, Controller[]>, rules: MatchRules) {
+    const teams = { blue: controllers.blue.length, orange: controllers.orange.length };
+    this.controllers = [...controllers.blue, ...controllers.orange];
+    this.state = createState(teams, rules);
     this.prev = this.state;
-    this.recording = { rules, playerCount: controllers.length, actions: [] };
+    this.recording = { rules, teams, actions: [] };
   }
 
   get latest(): GameState {

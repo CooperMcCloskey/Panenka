@@ -1,7 +1,10 @@
 from jaxmarl.environments.multi_agent_env import MultiAgentEnv
+from .world import kickoff_world
 
 class PanenkaEnv(MultiAgentEnv):
+
     def __init__(self, num_agents):
+        world = kickoff_world(num_agents)
         super().__init__(num_agents)
 
     def reset(self, key):

@@ -11,8 +11,8 @@ import {
 import { physicsStep } from '../src/lib/engine/physics';
 import { goalScoredBy } from '../src/lib/engine/rules';
 import { BALL_WALLS, GOAL_BOTTOM, GOAL_TOP, PLAYER_WALLS, POSTS, type Wall } from '../src/lib/engine/stadium';
-import { kickoffWorld } from '../src/lib/engine/state';
-import type { Action, World } from '../src/lib/engine/types';
+import { kickoffWorld, teamOf } from '../src/lib/engine/state';
+import type { Action, Teams, World } from '../src/lib/engine/types';
 import { vec, type Vec2 } from '../src/lib/engine/vec';
 
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), '../../rl/fixtures/physics.json');
@@ -26,15 +26,19 @@ const flatWorld = (w: World) => ({
 });
 const flatWall = (w: Wall) => [w.a.x, w.a.y, w.b.x, w.b.y, w.elasticity];
 
+type Policy = (w: World, tick: number) => Action[];
+
+const ONE_V_ONE: Teams = { blue: 1, orange: 1 };
+
 function rng(seed: number) {
   return () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
 }
 
 // Players mostly chase the ball and kick; sometimes move randomly. Re-decided every 8 ticks.
-function chasePolicy(seed: number) {
+function chasePolicy(seed: number): Policy {
   const rnd = rng(seed);
   let current: Action[] = [];
-  return (w: World, tick: number): Action[] => {
+  return (w, tick) => {
     if (tick % 8 === 0) {
       current = w.players.map((p) => {
         if (rnd() < 0.7) {
@@ -51,12 +55,14 @@ function chasePolicy(seed: number) {
 // Players run into posts, world edges and corners; orange mirrors blue. [moveX, moveY, kick] per 100 ticks.
 const SCRIPT = [[-1, -1, 0], [0, 1, 1], [-1, 0, 0], [0, -1, 0], [1, 1, 1], [-1, 1, 0]] as const;
 
-function scriptedPolicy(w: World, tick: number): Action[] {
-  const [moveX, moveY, kick] = SCRIPT[Math.floor(tick / 100)];
-  return w.players.map((_, i) => ({ moveX: i % 2 ? -moveX : moveX, moveY, kick: kick === 1 }) as Action);
+function scriptedPolicy(teams: Teams): Policy {
+  return (w, tick) => {
+    const [moveX, moveY, kick] = SCRIPT[Math.floor(tick / 100)];
+    return w.players.map((_, i) => ({ moveX: teamOf(teams, i) === 'orange' ? -moveX : moveX, moveY, kick: kick === 1 }) as Action);
+  };
 }
 
-function run(name: string, initial: World, policy: (w: World, tick: number) => Action[], ticks = TICKS) {
+function run(name: string, teams: Teams, policy: Policy, initial = kickoffWorld(teams), ticks = TICKS) {
   const actions: number[][] = [];
   const states = [];
   let w = initial;
@@ -66,28 +72,29 @@ function run(name: string, initial: World, policy: (w: World, tick: number) => A
     w = physicsStep(w, a);
     states.push(flatWorld(w));
   }
-  return { name, playerCount: initial.players.length, initial: flatWorld(initial), actions, states };
+  return { name, teams, initial: flatWorld(initial), actions, states };
 }
 
 const idle = (w: World) => w.players.map(() => IDLE);
 
 // The ball from `from` toward `to`, with idle players out of the way. Starts over the speed cap so it gets clamped.
 function shot(name: string, from: Vec2, to: Vec2) {
-  const w = kickoffWorld(2);
+  const w = kickoffWorld(ONE_V_ONE);
   const start: World = {
     players: w.players.map((p, j) => ({ ...p, pos: vec(j ? 1.7 : 0.1, 0.02) })),
     ball: { pos: from, vel: to.sub(from).normalize().scale(2 * MAX_BALL_SPEED) },
   };
-  return run(name, start, idle, SHOT_TICKS);
+  return run(name, ONE_V_ONE, idle, start, SHOT_TICKS);
 }
 
 const center = vec(CENTER_X, CENTER_Y);
 
 const cases = [
-  run('1v1_chase', kickoffWorld(2), chasePolicy(1)),
-  run('2v2_chase', kickoffWorld(4), chasePolicy(2)),
-  run('3v3_chase', kickoffWorld(6), chasePolicy(3)),
-  run('1v1_scripted', kickoffWorld(2), scriptedPolicy),
+  run('1v1_chase', ONE_V_ONE, chasePolicy(1)),
+  run('2v2_chase', { blue: 2, orange: 2 }, chasePolicy(2)),
+  run('3v3_chase', { blue: 3, orange: 3 }, chasePolicy(3)),
+  run('3v1_chase', { blue: 3, orange: 1 }, chasePolicy(4)),
+  run('1v1_scripted', ONE_V_ONE, scriptedPolicy(ONE_V_ONE)),
   // Walls and nets, then each post head-on and glancing.
   ...[0.3, 1.2, 2.5, 3.14, 4.0, 5.5].map((angle, i) =>
     shot(`ball_shot_${i}`, center, center.add(vec(Math.cos(angle), Math.sin(angle)))),

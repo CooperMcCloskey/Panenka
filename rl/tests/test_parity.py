@@ -83,7 +83,7 @@ def test_kickoff(name):
     with jax.enable_x64(True):
         case = CASES[name]
         expected = to_world([case["initial"]])
-        actual = jax.tree.map(lambda x: x[None], kickoff_world(case["playerCount"]))
+        actual = jax.tree.map(lambda x: x[None], kickoff_world(**case["teams"]))
         assert_worlds_close(actual, expected, 0, name)
 
 
