@@ -3,7 +3,7 @@
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import { loadControls } from "$lib/client/bindings";
-  import { KeyboardController } from "$lib/client/controllers";
+  import { KeyboardController } from "$lib/shared/controller";
   import { LocalSource } from "$lib/shared/sources";
   import { rulesFromParams } from "$lib/engine/rules";
   import Match from "../../../components/Match.svelte";

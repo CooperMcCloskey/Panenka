@@ -18,11 +18,16 @@
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"@types/node": "^24.13.6",
+		"@types/ws": "^8.18.1",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
 		"tsx": "^4.23.15",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.16",
 		"vitest": "^5.0.2"
+	},
+	"dependencies": {
+		"nanoid": "^6.0.1",
+		"ws": "^8.21.3"
 	}
 }
