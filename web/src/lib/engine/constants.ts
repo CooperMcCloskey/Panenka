@@ -4,7 +4,7 @@ export const TICK_RATE = 60; // ticks per second
 export const TICK_MS = 1000 / TICK_RATE;
 export const MAX_FRAME_MS = 250; // longer frames (e.g. a backgrounded tab) are cut short instead of simulated
 export const SUBSTEPS = 4; // movement and collisions per tick
-
+export const SNAPSHOT_NUM = 2 // the condition is tick % snapshot_num === 0, so 2 is 30 snapshots per second
 // Mechanics ------------------------------------------------------------------
 // Each tick: vel = (vel + FORCE / mass) * DAMPING, so top speed = (FORCE / mass) * DAMPING / (1 - DAMPING).
 // Elasticity is 0 (no bounce) to 1 (perfect bounce); a collision uses the product of both bodies' values.

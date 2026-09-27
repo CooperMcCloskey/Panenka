@@ -12,7 +12,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
 		"fixtures": "tsx scripts/fixtures.ts",
-		"server": "tsx src/lib/server/server.server.ts"
+		"server": "node build"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^5.5.7",
