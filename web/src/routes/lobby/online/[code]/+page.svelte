@@ -1,5 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { PageProps } from "./$types";
+
+  let { data }: PageProps = $props();
+  
 
   let status = $state("Disconnected");
   let lastMessage = $state("");
@@ -9,10 +13,6 @@
 
     socket.onopen = () => {
       console.log("Connected to server");
-
-      status = "Connected";
-
-      socket.send("Testing");
     };
 
     socket.onmessage = (event) => {
@@ -37,6 +37,14 @@
   });
 </script>
 
-<h1>Online Game</h1>
+<h1>Room {data.room.code}</h1>
+<p>Share this code with another player to open this lobby.</p>
+<p>{data.room.numPlayers} player(s) per team ·
+  {#if data.room.rules.kind === "time"}
+    {data.room.rules.minutes} minutes
+  {:else}
+    First to {data.room.rules.target} goals
+  {/if}
+</p>
 
 

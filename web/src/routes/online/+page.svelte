@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { resolve } from "$app/paths";
+  import { DEFAULT_MINUTES } from "$lib/engine/rules";
+  import type { PageProps } from "./$types";
+
+  let { form }: PageProps = $props();
   import MainMenu from "../../components/MainMenu.svelte";
 
   let username = $state("");
@@ -9,18 +12,28 @@
 
 <MainMenu>
   <h1>Online</h1>
+  <!-- TODO pass the username aswell and send it straight to the rooms file -->
   <input id="usernameInput" type="text" bind:value={username} placeholder="Username">
   <div id="options">
-    <div class="option">
+  <!-- Added forms to implement form actions -->
+    <form class="option" method="POST" action="?/createRoom">
       <h2>Create Room</h2>
-      <a href={resolve("/lobby/online") /* TODO make this actually gen a new room*/}>Create</a>
-    </div>
-    <div class="option">
+      <input type="hidden" name="username" value={username}>
+      <input type="hidden" name="numPlayers" value="1">
+      <input type="hidden" name="kind" value="time">
+      <input type="hidden" name="minutes" value={DEFAULT_MINUTES}>
+      <button type="submit">Create</button>
+    </form>
+    <form class="option" method="POST" action="?/joinRoom">
       <h2>Join Room</h2>
-      <input id="roomCodeInput" type="text" bind:value={roomCode} placeholder="Room Code">
-      <a href={resolve("/lobby/online") + "/" + roomCode}>Join</a>
-    </div>
+      <input type="hidden" name="username" value={username}>
+      <input name="roomCode" required id="roomCodeInput" type="text" bind:value={roomCode} placeholder="Room Code">
+      <button type="submit">Join</button>
+    </form>
   </div>
+  {#if form?.message}
+    <p role="alert">{form.message}</p>
+  {/if}
 </MainMenu>
 
 <style>
@@ -41,7 +54,9 @@
     margin: 0 0 8px;
     text-align: center;
   }
-  .option a{
+  .option button{
+    border: var(--border-width) solid var(--white);
+    padding: var(--font-size);
     box-sizing: border-box;
     width: 100%;
     margin: 0;

@@ -6,6 +6,8 @@ export const DEFAULT_MINUTES = 5;
 export const MAX_MINUTES = 60;
 export const DEFAULT_GOAL_TARGET = 3;
 export const MAX_GOAL_TARGET = 99;
+// Added by yours truly, max player per team (feel free to change)
+export const MAX_PLAYERS = 3;
 
 export const GOAL_PAUSE_TICKS = 1 * TICK_RATE;
 export const KICKOFF_COUNTDOWN_TICKS = 3 * TICK_RATE;

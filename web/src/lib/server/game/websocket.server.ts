@@ -1,3 +1,4 @@
+import { createState } from "$lib/engine/state";
 import { WebSocketServer } from "ws";
 
 export function startWebSocketServer() {
@@ -6,10 +7,8 @@ export function startWebSocketServer() {
   });
 
   wss.on("connection", (ws) => {
-    console.log("Client connected");
-
-    ws.send("test");
-
+    console.log("Connected")
+   
     ws.on("message", (data) => {
       const message = data.toString();
 
