@@ -53,7 +53,7 @@
 
 <!-- Later this menu will be where you can choose to play against AI -->
 <MainMenu>
-  <h1>Local Game</h1>
+  <h1>Local</h1>
   <div id="playerList">
     {#each [0, 1] as const as player}
       <div class="playerCard">
@@ -64,7 +64,7 @@
             {@const active = listening?.player === player && listening?.action === action}
             <label class="binding">
               <span>{ACTION_LABELS[action]}</span>
-              <button type="button" class="input key" class:listening={active}
+              <button type="button" class="key" class:listening={active}
                 onclick={() => (listening = active ? null : { player, action })}>
                 {active ? "?" : keyLabel(controls[player][action])}
               </button>
@@ -79,7 +79,7 @@
     <legend>Match</legend>
     <label>
       <input type="radio" name="mode" value="time" bind:group={mode} />
-      <input class="input" type="number" min="1" max={MAX_MINUTES} value={minutes} disabled={mode !== "time"}
+      <input type="number" min="1" max={MAX_MINUTES} value={minutes} disabled={mode !== "time"}
         oninput={(e) => (minutes = limitTyped(e.currentTarget, MAX_MINUTES))}
         onchange={() => (minutes ||= DEFAULT_MINUTES)} />
       minute game
@@ -87,7 +87,7 @@
     <label>
       <input type="radio" name="mode" value="goals" bind:group={mode} />
       First to
-      <input class="input" type="number" min="1" max={MAX_GOAL_TARGET} value={goals} disabled={mode !== "goals"}
+      <input type="number" min="1" max={MAX_GOAL_TARGET} value={goals} disabled={mode !== "goals"}
         oninput={(e) => (goals = limitTyped(e.currentTarget, MAX_GOAL_TARGET))}
         onchange={() => (goals ||= DEFAULT_GOAL_TARGET)} />
       goals
@@ -130,10 +130,10 @@
   }
   .key{
     min-width: 2.5em;
-    cursor: pointer;
   }
   .key.listening{
-    background-color: color-mix(in srgb, var(--black) 70%, var(--white) 30%);
+    background-color: var(--white);
+    color: var(--black);
   }
 
   #matchRules{
@@ -151,25 +151,8 @@
   }
   #matchRules input[type="number"]{
     width: 3em;
-    text-align: center;
   }
   #matchRules input:disabled{
     opacity: 0.4;
-  }
-
-  .input{
-    background-color: color-mix(in srgb, var(--black) 90%, var(--white) 10%);
-    color: var(--white);
-    border: none;
-    border-radius: 4px;
-    padding: 4px 6px;
-    font: inherit;
-    appearance: textfield;
-    -moz-appearance: textfield;
-  }
-  .input::-webkit-outer-spin-button,
-  .input::-webkit-inner-spin-button{
-    -webkit-appearance: none;
-    margin: 0;
   }
 </style>

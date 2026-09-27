@@ -1,8 +1,8 @@
 import { customAlphabet } from "nanoid";
 
+const nanoid = customAlphabet("1234567890ABCDEFGHJKLMNPQRSTUVWXYZ", 6);
 // Generates a room code
 function genCode() {
-    const nanoid = customAlphabet("1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ", 6);
     return nanoid();
 }
 

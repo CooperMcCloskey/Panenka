@@ -32,5 +32,12 @@
       width: 40%;
       padding: var(--font-size);
     }
+    :global(a:hover){
+      background-color: color-mix(in srgb, var(--black) 80%, var(--white) 20%);
+    }
+    :global(a:focus-visible){
+      outline: 2px solid var(--white);
+      outline-offset: 2px;
+    }
   }
 </style>
