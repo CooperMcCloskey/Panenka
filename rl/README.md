@@ -1,7 +1,7 @@
 # RL
 
-Training side of Panenka, in JAX. `src/panenka/` is a port of the web game's physics
-(`physicsStep` in `web/src/lib/engine/physics/`); the environment and training build on it.
+Training side of Panenka, in JAX. `src/panenka/env/` is the environment: a port of the web game's
+physics (`physicsStep` in `web/src/lib/engine/physics/`) and the JaxMARL env built on it.
 
 ```sh
 cd rl

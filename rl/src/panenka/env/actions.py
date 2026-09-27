@@ -8,9 +8,11 @@ IDLE = 8  # no movement, no kick
 def encode_action(move_x, move_y, kick):
     return (move_x + 1) * 6 + (move_y + 1) * 2 + kick
 
-
 def decode_action(index):
     """Returns (move, kick): move has shape (..., 2), kick is a bool array."""
     index = jnp.asarray(index)
     move = jnp.stack([index // 6 - 1, index // 2 % 3 - 1], axis=-1)
     return move, index % 2 == 1
+
+def mirror_action(a):                    # flips move_x, keeps move_y and kick
+    return (2 - a // 6) * 6 + a % 6

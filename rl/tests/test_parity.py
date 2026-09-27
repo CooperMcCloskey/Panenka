@@ -7,10 +7,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from panenka import (
+from panenka.env import (
     ACTION_COUNT, IDLE, World, decode_action, encode_action, goal_scored_by, kickoff_world, physics_step,
 )
-from panenka import constants, stadium
+from panenka.env import constants, stadium
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "physics.json").read_text())
 CASES = {case["name"]: case for case in FIXTURE["cases"]}
