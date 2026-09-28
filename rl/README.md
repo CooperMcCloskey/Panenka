@@ -1,15 +1,22 @@
 # RL
 
-Training side of Panenka, in JAX. `src/panenka/env/` is the environment: a port of the web game's
-physics (`physicsStep` in `web/src/lib/engine/physics/`) and the JaxMARL env built on it.
+Training side of Panenka, in JAX.
 
 ```sh
 cd rl
-uv sync          # .venv with jax and pytest
-uv run pytest    # parity with the TypeScript engine
+uv sync                                  # .venv with jax and pytest
+uv run pytest                            # parity with the TypeScript engine
+uv run python -m panenka.training.train  # play games with the current model
 ```
 
-## Physics
+Layout of `src/panenka/`:
+
+- `env/engine/` — port of the web game's engine (`web/src/lib/engine/`): physics, world, actions, goal rule.
+- `env/` — the JaxMARL environment built on it (`PanenkaEnv`) and its observations.
+- `models/` — networks that pick actions (`RandomActor` so far).
+- `training/` — training scripts and their settings.
+
+## Engine
 
 - `physics_step(world, actions)` advances one tick. It's pure, so it works under `jax.jit` and `jax.vmap`.
 - `World` holds ball and player positions/velocities, and per-player `kick_held`, `kick_used`,

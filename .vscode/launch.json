@@ -1,0 +1,14 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Train",
+			"type": "debugpy",
+			"request": "launch",
+			"module": "panenka.training.train",
+			"cwd": "${workspaceFolder}/rl",
+			"python": "${workspaceFolder}/rl/.venv/bin/python",
+			"console": "integratedTerminal"
+		}
+	]
+}
