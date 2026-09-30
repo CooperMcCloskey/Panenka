@@ -1,5 +1,6 @@
 from jaxmarl.environments.multi_agent_env import MultiAgentEnv
 from jaxmarl.environments.spaces import Box, Discrete
+import jax
 import jax.numpy as jnp
 from .engine.rules import goal_scored_by
 from .engine.world import kickoff_world, World
@@ -65,11 +66,24 @@ class PanenkaEnv(MultiAgentEnv):
             observation[agent_name(i, self.blue_agent_num)] = observe(state, i, self.blue_agent_num, self.agent_num, self.max_steps)
         return observation
 
-    def step_env(self, key, state, actions): # key is unused because the game is deterministic
+    # JaxMARL's step can't pass ticks through to step_env, so this replaces it (same auto-reset).
+    # ticks defaults to 1 so JaxMARL's wrappers, which don't know about it, still work
+    def step(self, key, state, actions, ticks=1.0):
+        key, reset_key = jax.random.split(key)
+        obs, new_state, rewards, dones, infos = self.step_env(key, state, actions, ticks)
+        reset_obs, reset_state = self.reset(reset_key)
+        pick = lambda reset, stepped: jax.lax.select(dones["__all__"], reset, stepped) # a finished game restarts at kickoff
+        return jax.tree.map(pick, reset_obs, obs), jax.tree.map(pick, reset_state, new_state), rewards, dones, infos
+
+    def step_env(self, key, state, actions, ticks):
         player_actions = jnp.stack([actions[a] for a in self.agents])
         is_orange = jnp.arange(self.agent_num) >= self.blue_agent_num
         player_actions = jnp.where(is_orange, mirror_action(player_actions), player_actions)
-        world = physics_step(state.world, player_actions)
+
+        # hold the actions for ticks, rounded up or down at random so it averages out exactly (6.3 -> 6 or 7)
+        base = jnp.floor(ticks)
+        held_ticks = (base + (jax.random.uniform(key) < ticks - base)).astype(jnp.int32)
+        world = jax.lax.fori_loop(0, held_ticks, lambda _, w: physics_step(w, player_actions), state.world)
         new_state = State(world=world, step=state.step + 1)
         obs = self.get_obs(new_state)
 
@@ -79,7 +93,7 @@ class PanenkaEnv(MultiAgentEnv):
         done = (goal != 0) | (new_state.step >= self.max_steps) # done = true when a goal is scored or max steps is reached
         dones = {a: done for a in self.agents} | {"__all__": done} # apply done to all agents so they all stop together
 
-        return obs, new_state, rewards, dones, {} 
+        return obs, new_state, rewards, dones, {"ticks": held_ticks} # ticks actually played, for per-tick discounting
             
     def get_avail_actions(self, state):
         return {a: jnp.ones(ACTION_COUNT, dtype=bool) for a in self.agents} # all actions are always available
