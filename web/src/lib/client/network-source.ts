@@ -1,4 +1,5 @@
 import { IDLE } from '$lib/engine/actions';
+import { SNAPSHOT_NUM, TICK_MS } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
 import type { Action, Body, MatchRules } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
@@ -6,13 +7,15 @@ import type { ClientMessage, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
 import { loadControls } from './bindings';
 
+const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
+
 export class NetworkSource implements StateSource {
   private socket?: WebSocket;
   private held = new Set<string>();
   private controls = loadControls()[0];
   private state;
   private previous;
-  private age = 50;
+  private age = SNAPSHOT_MS;
   private seq = 0;
   private timer?: ReturnType<typeof setInterval>;
   private started = false;
@@ -87,7 +90,7 @@ export class NetworkSource implements StateSource {
   }
   update(dtMs: number) { this.age += dtMs; }
   currentState() {
-    const t = Math.min(this.age / 50, 1);
+    const t = Math.min(this.age / SNAPSHOT_MS, 1);
     const blend = <T extends Body>(a: T, b: T): T => ({ ...b, pos: a.pos.lerp(b.pos, t) });
     return { ...this.state, world: {
       ball: blend(this.previous.world.ball, this.state.world.ball),
