@@ -7,28 +7,16 @@ import { step } from '$lib/engine/step';
 import type { Action, MatchRules } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
 import type { ServerMessage } from '$lib/shared/protocol';
+import type { Client, LobbyPlayer } from "$lib/shared/protocol";
 
-let uuid = self.crypto.randomUUID()
+// Uuid for playerID and clientID
+const Uuid = self.crypto.randomUUID
 
-type Client = {
-  token: string;
-  socket?: WebSocket;
-  playerIDs: string[];
-}
-
-type Player = {
-  action: Action;
-  queue: Action[];
-  seq: number;
-  recieved: number;
-  username: string;
-}
-
-
+// Creating room class
 export class Room {
   
   readonly clients: Record<string, Client> = {};
-  readonly players: Record<string, Player> = {};
+  readonly players: Record<string, LobbyPlayer> = {};
   readonly rules: MatchRules = {kind:"time", minutes: 5};
   state = null!;
   private timer?: ReturnType<typeof setInterval>;
@@ -38,21 +26,32 @@ export class Room {
   private accumulator = 0;
   constructor(readonly code: string) {};
 
+  // Methods
   get usernames() { return Object.values(this.players); }
-  summary() { return { code: this.code, rules: this.rules, numPlayers: this.numPlayers, usernames: this.usernames }; }
+
+  summary() { return { code: this.code, rules: this.rules, usernames: this.usernames }; }
+
+  // Add player and client
   addPlayer(username: string) {
-    if (this.players.length >= this.numPlayers * 2) return undefined;
-    const player = { token: nanoid(32), username, action: IDLE, queue: [] as Action[], seq: -1, received: 0 };
-    this.players.push(player);
+    const playerID = Uuid();
+    const player: LobbyPlayer = {username, action: IDLE, queue: [], seq: -1, recieved: 0};
+    this.players[playerID] = player;
     this.broadcastLobby();
     return player;
   }
+
+  addClient(){
+    const client = { token: nanoid(32) }
+    return client;
+  }
+
   send(socket: WebSocket, message: ServerMessage) {
     if (socket.readyState === WebSocket.OPEN) {
       if (socket.bufferedAmount > 256_000) { socket.close(1013, 'Connection too slow'); return; }
       socket.send(JSON.stringify(message));
     }
   }
+  
   broadcastLobby() {
     this.players.forEach((p, playerIndex) => {
       if (p.socket) this.send(p.socket, { type: 'lobby', usernames: this.usernames,
