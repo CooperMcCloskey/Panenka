@@ -38,6 +38,10 @@ export class NetworkSource implements StateSource {
     };
     socket.onmessage = event => {
       const message: ServerMessage = JSON.parse(event.data);
+      if (message.type === 'lobby' && !message.active) {
+        this.started = false;
+        this.held.clear();
+      }
       if (message.type === 'snapshot') {
         const next = decodeState(new Float64Array(message.state), this.rules,
           { blue: this.numPlayers, orange: this.numPlayers });
@@ -60,6 +64,7 @@ export class NetworkSource implements StateSource {
     if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 8192)
       this.socket.send(JSON.stringify(message));
   }
+  startMatch() { this.send({ type: 'start' }); }
   private sendInput() {
     const key = (name: string) => this.held.has(name) ? 1 : 0;
     const c = this.controls;

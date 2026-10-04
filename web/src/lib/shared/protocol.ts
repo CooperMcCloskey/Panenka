@@ -2,9 +2,10 @@ import type { Action } from '$lib/engine/types';
 
 export type ClientMessage =
   | { type: 'join'; code: string; token: string }
+  | { type: 'start' }
   | { type: 'input'; seq: number; action: Action };
 export type ServerMessage =
-  | { type: 'lobby'; usernames: string[]; connected: boolean[]; playerIndex: number }
+  | { type: 'lobby'; usernames: string[]; connected: boolean[]; playerIndex: number; active: boolean }
   | { type: 'snapshot'; state: number[] }
   | { type: 'error'; message: string };
 

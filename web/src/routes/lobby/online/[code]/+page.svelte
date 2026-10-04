@@ -11,6 +11,13 @@
   let playing = $state(false);
   let status = $state('Connecting');
   let playerIndex = $state(0);
+  let active = $state(false);
+  const canStart = $derived(status === 'Connected' && !active
+    && connected.length === data.room.numPlayers * 2 && connected.every(Boolean));
+
+  function returnToLobby() {
+    playing = false;
+  }
 
   onMount(() => {
     usernames = data.room.usernames;
@@ -18,6 +25,8 @@
       data.room.numPlayers, message => {
         if (message.type === 'lobby') {
           usernames = message.usernames; connected = message.connected; playerIndex = message.playerIndex;
+          active = message.active;
+          if (!active) returnToLobby();
         } else if (message.type === 'snapshot') playing = true;
       }, value => status = value);
     source = network;
@@ -27,12 +36,13 @@
 </script>
 
 {#if playing && source}
-  <Match {source} />
+  <Match {source} onEnd={returnToLobby} manageSource={false} />
   {#if status !== 'Connected'}<p class="connection" role="status">{status}</p>{/if}
 {:else}
   <h1>Room {data.room.code}</h1>
-  <p>Share this code. The match starts when all {data.room.numPlayers * 2} players are connected.</p>
+  <p>Share this code. Once all {data.room.numPlayers * 2} players are connected, anyone can start a game.</p>
   <p role="status">{status}</p>
+  <button disabled={!canStart} onclick={() => source?.startMatch()}>Start game</button>
   <h2>Players</h2>
   <ul>
     {#each usernames as user, i}

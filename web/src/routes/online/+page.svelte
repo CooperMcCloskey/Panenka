@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     clampInt, DEFAULT_GOAL_TARGET, DEFAULT_MINUTES, MAX_GOAL_TARGET, MAX_MINUTES,
+    MAX_PLAYERS,
   } from "$lib/engine/rules";
   import type { MatchRules } from "$lib/engine/types";
   import type { PageProps } from "./$types";
@@ -14,6 +15,7 @@
   let mode = $state<MatchRules["kind"]>("time");
   let minutes = $state(DEFAULT_MINUTES);
   let goals = $state(DEFAULT_GOAL_TARGET);
+  let numPlayers = $state(1);
 
   function limitTyped(el: HTMLInputElement, max: number): number {
     if (el.value === "") return NaN;
@@ -22,7 +24,6 @@
     return n;
   }
 </script>
-<!-- TODO Return jwt token-->
 
 <MainMenu>
   <h1>Online</h1>
@@ -34,9 +35,15 @@
   {#if creating}
     <form id="createRoomForm" class="option" method="POST" action="?/createRoom">
       <h2>Create Room</h2>
-      <input type="hidden" name="numPlayers" value="1">
       <fieldset id="matchRules">
         <legend>Match</legend>
+        <label>
+          Players per team
+          <input type="number" name="numPlayers" min="1" max={MAX_PLAYERS}
+            step="1" required value={numPlayers}
+            oninput={(e) => (numPlayers = limitTyped(e.currentTarget, MAX_PLAYERS))}
+            onchange={() => (numPlayers ||= 1)} />
+        </label>
         <label>
           <input type="radio" name="kind" value="time" bind:group={mode} />
           <input type="number" name="minutes" min="1" max={MAX_MINUTES}

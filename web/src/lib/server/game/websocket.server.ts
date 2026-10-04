@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
-import { getRoom } from './rooms.server';
+import { getRoom, cancelPlayerRemoval, removePlayer, schedulePlayerRemoval,
+  deleteRoomIfEmpty, HEARTBEAT_MS, MAX_MISSED_PINGS } from './rooms.server';
 import type { Room } from './room.server';
 import { isInput } from '$lib/shared/protocol';
 
@@ -13,6 +14,7 @@ export function startWebSocketServer() {
     let room: Room | undefined;
     let token = '';
     let alive = true;
+    let missedPings = 0;
     let count = 0;
     let player: Room['players'][number] | undefined;
     let pingSentAt: number | undefined;
@@ -25,15 +27,19 @@ export function startWebSocketServer() {
     };
     const joinTimeout = setTimeout(() => socket.close(1008, 'Join required'), 5000);
     const heartbeat = setInterval(() => {
-      if (!alive) { socket.terminate(); return; }
+      if (!alive && ++missedPings >= MAX_MISSED_PINGS) {
+        if (!room || !removePlayer(room, token, socket)) socket.terminate();
+        return;
+      }
       ping();
-    }, 15_000);
+    }, HEARTBEAT_MS);
     const rateTimer = setInterval(() => { count = 0; }, 1000);
     socket.on('pong', data => {
       if (pingSentAt === undefined || data.toString() !== pingPayload) return;
       const pingMs = performance.now() - pingSentAt;
       pingSentAt = undefined;
       alive = true;
+      missedPings = 0;
       if (room && player && player.socket === socket)
         console.log(`[room ${room.code}] ${player.username} ping: ${pingMs.toFixed(1)} ms (RTT)`);
     });
@@ -48,16 +54,22 @@ export function startWebSocketServer() {
           const target = getRoom(message.code);
           player = target?.connect(message.token, socket);
           if (!player) { socket.close(1008, 'Invalid room session'); return; }
-          room = target; token = message.token;
+          room = target!; token = message.token;
+          cancelPlayerRemoval(room, token);
           clearTimeout(joinTimeout);
           ping();
-        } else if (isInput(message)) room.input(token, socket, message.seq, message.action);
+        } else if (message?.type === 'start') room.startMatch(token, socket);
+        else if (isInput(message)) room.input(token, socket, message.seq, message.action);
         else socket.close(1008, 'Invalid message');
       } catch { socket.close(1008, 'Invalid JSON'); }
     });
     socket.on('close', () => {
       clearTimeout(joinTimeout); clearInterval(heartbeat); clearInterval(rateTimer);
-      room?.disconnect(socket);
+      if (room && player?.socket === socket) {
+        room.disconnect(socket);
+        schedulePlayerRemoval(room, token);
+        deleteRoomIfEmpty(room);
+      }
     });
     socket.on('error', () => socket.terminate());
   });

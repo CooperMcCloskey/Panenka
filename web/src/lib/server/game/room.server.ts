@@ -13,6 +13,8 @@ export class Room {
     action: Action; queue: Action[]; seq: number; received: number }[] = [];
   state;
   private timer?: ReturnType<typeof setInterval>;
+  private endTimer?: ReturnType<typeof setTimeout>;
+  private active = false;
   private last = 0;
   private accumulator = 0;
   constructor(readonly code: string, readonly rules: MatchRules, readonly numPlayers: number) {
@@ -36,7 +38,7 @@ export class Room {
   broadcastLobby() {
     this.players.forEach((p, playerIndex) => {
       if (p.socket) this.send(p.socket, { type: 'lobby', usernames: this.usernames,
-        connected: this.players.map(p => !!p.socket), playerIndex });
+        connected: this.players.map(p => !!p.socket), playerIndex, active: this.active });
     });
   }
   connect(token: string, socket: WebSocket) {
@@ -46,13 +48,29 @@ export class Room {
     player.socket = socket;
     player.action = IDLE; player.queue = []; player.seq = -1; player.received = performance.now();
     this.broadcastLobby();
-    if (this.state.match.tick > 0) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)) });
-    if (!this.timer && this.players.length === this.numPlayers * 2 && this.players.every(p => p.socket)) {
+    if (this.active) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)) });
+    if (this.active && !this.state.match.winner && !this.timer) {
       this.last = performance.now();
       this.accumulator = 0;
       this.timer = setInterval(() => this.update(), TICK_MS);
     }
     return player;
+  }
+  startMatch(token: string, socket: WebSocket) {
+    if (this.active || !this.players.some(p => p.token === token && p.socket === socket)
+      || this.players.length !== this.numPlayers * 2 || !this.players.every(p => p.socket)) return;
+    this.state = createState({ blue: this.numPlayers, orange: this.numPlayers }, this.rules);
+    this.players.forEach(p => { p.action = IDLE; p.queue = []; p.received = performance.now(); });
+    this.active = true;
+    this.last = performance.now();
+    this.accumulator = 0;
+    this.broadcastLobby();
+    this.broadcastSnapshot();
+    this.timer = setInterval(() => this.update(), TICK_MS);
+  }
+  private broadcastSnapshot() {
+    const message: ServerMessage = { type: 'snapshot', state: Array.from(encodeState(this.state)) };
+    this.players.forEach(p => { if (p.socket) this.send(p.socket, message); });
   }
   input(token: string, socket: WebSocket, seq: number, action: Action) {
     const p = this.players.find(p => p.token === token && p.socket === socket);
@@ -73,6 +91,16 @@ export class Room {
     this.broadcastLobby();
     if (!this.players.some(p => p.socket)) this.stop();
   }
+  removePlayer(token: string) {
+    const index = this.players.findIndex(p => p.token === token);
+    if (index === -1) return;
+    this.stop();
+    this.active = false;
+    this.players.splice(index, 1);
+    this.state = createState({ blue: this.numPlayers, orange: this.numPlayers }, this.rules);
+    this.players.forEach(p => { p.action = IDLE; p.queue = []; });
+    this.broadcastLobby();
+  }
   private update() {
     const now = performance.now();
     this.accumulator += Math.min(now - this.last, MAX_FRAME_MS);
@@ -85,11 +113,24 @@ export class Room {
       });
       this.state = step(this.state, actions);
       this.accumulator -= TICK_MS;
+      if (this.state.match.winner !== null) {
+        this.broadcastSnapshot();
+        clearInterval(this.timer); this.timer = undefined;
+        this.endTimer = setTimeout(() => {
+          this.active = false;
+          this.endTimer = undefined;
+          this.broadcastLobby();
+        }, 3000);
+        return;
+      }
       if (this.state.match.tick % SNAPSHOT_NUM === 0) {
-        const message: ServerMessage = { type: 'snapshot', state: Array.from(encodeState(this.state)) };
-        this.players.forEach(p => { if (p.socket) this.send(p.socket, message); });
+        this.broadcastSnapshot();
       }
     }
   }
-  stop() { clearInterval(this.timer); this.timer = undefined; }
+  stop() {
+    clearInterval(this.timer); this.timer = undefined;
+    clearTimeout(this.endTimer); this.endTimer = undefined;
+    if (this.state.match.winner !== null) this.active = false;
+  }
 }
