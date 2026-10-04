@@ -19,6 +19,7 @@ export function startWebSocketServer() {
     let player: Room['players'][number] | undefined;
     let pingSentAt: number | undefined;
     let pingPayload = '';
+    // May be useful for interpolation and testing
     const ping = () => {
       alive = false;
       pingSentAt = performance.now();
@@ -40,8 +41,6 @@ export function startWebSocketServer() {
       pingSentAt = undefined;
       alive = true;
       missedPings = 0;
-      if (room && player && player.socket === socket)
-        console.log(`[room ${room.code}] ${player.username} ping: ${pingMs.toFixed(1)} ms (RTT)`);
     });
     socket.on('message', (data, binary) => {
       if (binary || ++count > 120) { socket.close(1008, 'Invalid input rate'); return; }

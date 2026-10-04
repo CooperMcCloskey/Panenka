@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import { resolve } from "$app/paths";
-import { MAX_PLAYERS, MAX_MINUTES, MAX_GOAL_TARGET } from "$lib/engine/rules";
+import { MAX_TEAMSIZE, MAX_MINUTES, MAX_GOAL_TARGET } from "$lib/engine/rules";
 import { createRoom, getRoom } from "$lib/server/game/rooms.server";
 import type { Actions } from "./$types";
 
@@ -16,7 +17,7 @@ export const actions = {
       return fail(400, { message: "Username must contain 1–20 characters and cannot be blank." });
     }
 
-    if (!Number.isInteger(numPlayers) || numPlayers < 1 || numPlayers > MAX_PLAYERS) {
+    if (!Number.isInteger(numPlayers) || numPlayers < 1 || numPlayers > MAX_TEAMSIZE) {
       return fail(400, { message: "Invalid number of players per team." });
     }
     if ((kind !== "time" && kind !== "goals") || !Number.isInteger(value) || value < 1 ||
@@ -29,7 +30,7 @@ export const actions = {
       : { kind, target: value } as const;
     const room = createRoom(rules, numPlayers, username.trim());
     const token = room.players[0].token;
-    cookies.set(`room_${room.code}`, token, { path: "/", httpOnly: true, sameSite: "strict" });
+    cookies.set(`room_${room.code}`, token, { path: "/", httpOnly: true, sameSite: "strict", secure: !dev });
     redirect(303, resolve("/lobby/online/[code]", { code: room.code }));
   },
 
@@ -48,7 +49,7 @@ export const actions = {
     const player = existing ?? room.addPlayer(username.trim());
     if (!player) return fail(400, { message: "Room is full." });
     const token = player.token;
-    cookies.set(`room_${room.code}`, token, { path: "/", httpOnly: true, sameSite: "strict" });
+    cookies.set(`room_${room.code}`, token, { path: "/", httpOnly: true, sameSite: "strict", secure: !dev });
     redirect(303, resolve("/lobby/online/[code]", { code: room.code }));
   }
 } satisfies Actions;

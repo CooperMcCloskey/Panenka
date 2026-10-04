@@ -29,6 +29,8 @@ input[type="number"], input[type="text"], button{
   padding: 4px 6px;
   font: inherit;
   text-align: center;
+  font-family: monospace;
+  font-size: calc(var(--font-size) * 1.2);
 }
 button{
   cursor: pointer;

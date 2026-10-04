@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     clampInt, DEFAULT_GOAL_TARGET, DEFAULT_MINUTES, MAX_GOAL_TARGET, MAX_MINUTES,
-    MAX_PLAYERS,
+    MAX_TEAMSIZE,
   } from "$lib/engine/rules";
   import type { MatchRules } from "$lib/engine/types";
   import type { PageProps } from "./$types";
@@ -39,9 +39,9 @@
         <legend>Match</legend>
         <label>
           Players per team
-          <input type="number" name="numPlayers" min="1" max={MAX_PLAYERS}
+          <input type="number" name="numPlayers" min="1" max={MAX_TEAMSIZE}
             step="1" required value={numPlayers}
-            oninput={(e) => (numPlayers = limitTyped(e.currentTarget, MAX_PLAYERS))}
+            oninput={(e) => (numPlayers = limitTyped(e.currentTarget, MAX_TEAMSIZE))}
             onchange={() => (numPlayers ||= 1)} />
         </label>
         <label>

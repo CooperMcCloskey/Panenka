@@ -8,19 +8,37 @@ import type { Action, MatchRules } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
 import type { ServerMessage } from '$lib/shared/protocol';
 
+let uuid = self.crypto.randomUUID()
+
+type Client = {
+  token: string;
+  socket?: WebSocket;
+  playerIDs: string[];
+}
+
+type Player = {
+  action: Action;
+  queue: Action[];
+  seq: number;
+  recieved: number;
+  username: string;
+}
+
+
 export class Room {
-  readonly players: { token: string; username: string; socket?: WebSocket;
-    action: Action; queue: Action[]; seq: number; received: number }[] = [];
-  state;
+  
+  readonly clients: Record<string, Client> = {};
+  readonly players: Record<string, Player> = {};
+  readonly rules: MatchRules = {kind:"time", minutes: 5};
+  state = null!;
   private timer?: ReturnType<typeof setInterval>;
   private endTimer?: ReturnType<typeof setTimeout>;
   private active = false;
   private last = 0;
   private accumulator = 0;
-  constructor(readonly code: string, readonly rules: MatchRules, readonly numPlayers: number) {
-    this.state = createState({ blue: numPlayers, orange: numPlayers }, rules);
-  }
-  get usernames() { return this.players.map(p => p.username); }
+  constructor(readonly code: string) {};
+
+  get usernames() { return Object.values(this.players); }
   summary() { return { code: this.code, rules: this.rules, numPlayers: this.numPlayers, usernames: this.usernames }; }
   addPlayer(username: string) {
     if (this.players.length >= this.numPlayers * 2) return undefined;
