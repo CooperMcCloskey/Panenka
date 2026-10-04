@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from .constants import CENTER_X, CENTER_Y, WORLD_WIDTH, WORLD_HEIGHT, MAX_BALL_SPEED, KICK_COOLDOWN
+from .engine.constants import CENTER_X, CENTER_Y, WORLD_WIDTH, WORLD_HEIGHT, MAX_BALL_SPEED, KICK_COOLDOWN
 WORLD_CENTER = jnp.array([CENTER_X, CENTER_Y])
 WORLD_INV_SIZE = jnp.array([1/WORLD_WIDTH, 1/WORLD_HEIGHT])
 INV_MAX_SPEED = 1/MAX_BALL_SPEED
@@ -43,6 +43,3 @@ def get_ball_features(world, i, is_blue):
 
     features = jnp.concatenate([ball_pos, relative_pos, vel])
     return features
-
-def agent_name(i, blue_agent_num):
-    return f"blue_{i}" if i < blue_agent_num else f"orange_{i - blue_agent_num}"
