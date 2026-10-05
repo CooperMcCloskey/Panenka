@@ -40,7 +40,7 @@ export class LocalSource implements StateSource {
   update(dtMs: number) {
     this.acc += Math.min(dtMs, MAX_FRAME_MS);
     while (this.acc >= TICK_MS) {
-      const actions = this.controllers.map((c, i) => c.getAction(this.state, i));
+      const actions = this.controllers.map((c, i) => c.getAction(this.state));
       this.recording.actions.push(actions.map(encodeAction));
       this.prev = this.state;
       this.state = step(this.state, actions);

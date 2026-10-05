@@ -17,7 +17,7 @@ describe('codec', () => {
     const seen = new Set<string>();
     const check = () => {
       seen.add(s.match.winner ? 'winner' : s.match.phase.kind);
-      expect(decodeState(encodeState(s), rules, teamSizes)).toEqual(s);
+      expect(decodeState(encodeState(s))).toEqual(s);
     };
     for (let goal = 0; goal < 2; goal++) {
       // Random play, then fire the ball into the right goal so every phase and a winner occur.
@@ -32,6 +32,14 @@ describe('codec', () => {
       }
     }
     expect(seen).toEqual(new Set(['countdown', 'play', 'goal', 'winner']));
+  });
+
+  it('round-trips timed matches', () => {
+    let s: GameState = createState({ blue: 2, orange: 2 }, { kind: 'time', minutes: 7 });
+    for (let t = 0; t < 300; t++) {
+      s = step(s, s.world.players.map((_, i) => decodeAction((t + i) % ACTION_COUNT)));
+      expect(decodeState(encodeState(s))).toEqual(s);
+    }
   });
 });
 

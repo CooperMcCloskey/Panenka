@@ -1,9 +1,10 @@
 import { IDLE } from '$lib/engine/actions';
 import { SNAPSHOT_NUM, TICK_MS } from '$lib/engine/constants';
-import type { Body, GameState, MatchRules } from '$lib/engine/types';
+import { createState } from '$lib/engine/state';
+import type { Body, GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
 import type { KeyboardController } from '$lib/shared/controller';
-import type { ClientMessage, LobbyPlayer, LobbyPlayers, ServerMessage } from '$lib/shared/protocol';
+import type { ClientMessage, LobbyPlayers, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
 
 const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
@@ -34,6 +35,8 @@ export class NetworkSource implements StateSource {
   ){}
   
   start() {
+    Object.values(this.controllers).forEach(c => c.attach());
+
     if (this.socket) return;
     const url = new URL(window.location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -57,13 +60,21 @@ export class NetworkSource implements StateSource {
 
     this.timer = setInterval(() => this.sendInput(), 100);
   }
+  stop() {
+    Object.values(this.controllers).forEach(c => c.detach());
+    
+    const idleActions = Object.fromEntries(Object.keys(this.controllers).map(k => [k, IDLE]))
+    this.send({ type: 'input', seq: this.seq++, actions: idleActions });
+    const socket = this.socket; this.socket = undefined;
+    if (socket) { socket.onclose = null; socket.close(); }
+  }
 
   private onMessage(message: ServerMessage){
     this.onMessageCallback(message);
     if(message.type === "lobby") this.onLobbyMessage(message);
     else if(message.type === "snapshot") this.onSnapshotMessage(message);
     else if(message.type === "error") this.onErrorMessage(message);
-    throw new Error("Unknown error type");
+    else throw new Error("Unknown error type");
   }
   private onLobbyMessage(message: ServerMessage & {type: "lobby"}){
     if(message.rev <= this.lobbyRev || this.started) return;
@@ -87,29 +98,32 @@ export class NetworkSource implements StateSource {
     if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 8192)
       this.socket.send(JSON.stringify(message));
   }
-
-  startMatch() { this.send({ type: 'start' }); }
   private sendInput() {
-    if(!this.state) return; 
-    const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction(this.state)])))
+    const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction()])))
     this.send({ type: 'input', seq: this.seq++, actions });
   }
+  startMatch() { this.send({ type: 'start' }); }
 
-  stop() {
-    Object.values(this.controllers).forEach(c => c.detach());
-    const idleActions = Object.fromEntries(Object.keys(this.controllers).map(k => [k, IDLE]))
-    this.send({ type: 'input', seq: this.seq++, actions: idleActions });
-    const socket = this.socket; this.socket = undefined;
-    if (socket) { socket.onclose = null; socket.close(); }
+  getTeamSizes(): TeamSizes{
+    let blue = 0;
+    let orange = 0;
+    Object.values(this.lobbyPlayers).forEach(p => p.team === "blue" ? blue++ : orange++)
+    return {blue, orange}
   }
 
   update(dtMs: number) { this.age += dtMs; }
-  currentState() {
+  currentState(): GameState {
+    const {state, previous} = this;
+    if(!state) return createState(this.getTeamSizes(), this.rules)
+    if(!previous) return state;
+
     const t = Math.min(this.age / SNAPSHOT_MS, 1);
     const blend = <T extends Body>(a: T, b: T): T => ({ ...b, pos: a.pos.lerp(b.pos, t) });
-    return { ...this.state, world: {
-      ball: blend(this.previous.world.ball, this.state.world.ball),
-      players: this.state.world.players.map((p, i) => blend(this.previous.world.players[i], p)),
+    return { 
+      ...state, 
+      world: {
+        ball: blend(previous.world.ball, state.world.ball),
+        players: state.world.players.map((p, i) => blend(previous.world.players[i], p)),
     } };
   }
 }
