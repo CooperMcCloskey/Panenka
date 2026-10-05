@@ -1,4 +1,5 @@
 import type { Action, MatchRules, Team, Teams } from '$lib/engine/types';
+import { WebSocket } from "ws";
 
 export type MatchInfo = { rules: MatchRules, teams: Teams; order: string[] };
 
@@ -17,7 +18,7 @@ export type ClientMessage =
   | { type: 'setRules'; rules: MatchRules };
 
 export type ServerMessage =
-  | { type: 'lobby'; usernames: string[]; connected: boolean[]; playerIndex: number; active: boolean }
+  | { type: 'lobby'; usernames: string[]; connected: boolean[]; active: boolean }
   | { type: 'snapshot'; state: number[] }
   | { type: 'error'; message: string };
 
@@ -42,5 +43,6 @@ export type LobbyPlayer = {
   action: Action;
   queue: Action[];
   seq: number;
-  recieved: number;
+  received: number;
+  team: Team;
 }
