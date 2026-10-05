@@ -1,0 +1,1 @@
+export const SEND_INPUT_INTERVAL = 100 //ms delay between sending input to the server 

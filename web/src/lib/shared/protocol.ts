@@ -1,25 +1,45 @@
-import type { Action, MatchRules, Team, Teams } from '$lib/engine/types';
+import type { Action, MatchRules, Team } from '$lib/engine/types';
 
-export type MatchInfo = { rules: MatchRules, teams: Teams; order: string[] };
+export type LobbyPlayer = {username: string, team: Team}
+
+export type Client = {
+  token: string,
+  socket?: WebSocket,
+  playerIDs: string[],
+}
+
+export type LobbyPlayers = Record<string, LobbyPlayer>
+
+export type ClientAction = {
+  action: Record<string, Action>,
+  queue: Record<string, Action>[],
+  seq: number, //the number of actions sent (used to drop old updates)
+  recieved: number, //ms since last message arrived
+}
 
 export type LobbyState = {
-  rev: number;
-  rules: MatchRules;
-  players: LobbyPlayer[];
-  match: MatchInfo | null;
-};
+  rev: number,
+  rules: MatchRules,  
+  players: LobbyPlayers,
+}
 
 export type ClientMessage =
-  | { type: 'join'; code: string; token: string }
+  | { type: 'join', code: string, token: string }
   | { type: 'start' }
-  | { type: 'input'; seq: number; action: Action }
-  | { type: 'setTeam'; playerID: string; team: Team }
-  | { type: 'setRules'; rules: MatchRules };
+  | { type: 'input', seq: number, actions: Record<string, Action>}
+  | { type: 'setLobby', lobbyState: LobbyState }
 
 export type ServerMessage =
-  | { type: 'lobby'; usernames: string[]; connected: boolean[]; playerIndex: number; active: boolean }
-  | { type: 'snapshot'; state: number[] }
-  | { type: 'error'; message: string };
+  | {
+      type: 'lobby';
+      rev: number; // lets clients ignore out-of-date updates
+      rules: MatchRules;
+      players: Record<string, LobbyPlayer>;
+      you: string[]; // the player IDs this client controls
+      start: boolean;
+    }
+  | { type: 'snapshot', state: number[] }
+  | { type: 'error', message: string }
 
 export function isInput(value: unknown): value is Extract<ClientMessage, { type: 'input' }> {
   if (!value || typeof value !== 'object') return false;
@@ -30,17 +50,3 @@ export function isInput(value: unknown): value is Extract<ClientMessage, { type:
     && typeof a.kick === 'boolean';
 }
 
-// Defininf types
-export type Client = {
-  token: string;
-  socket?: WebSocket;
-  playerIDs: string[];
-}
-
-export type LobbyPlayer = {
-  username: string;
-  action: Action;
-  queue: Action[];
-  seq: number;
-  recieved: number;
-}

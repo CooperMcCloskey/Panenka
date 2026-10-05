@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ACTION_COUNT, decodeAction } from '$lib/engine/actions';
 import { createState } from '$lib/engine/state';
 import { step } from '$lib/engine/step';
-import type { GameState, MatchRules, Teams } from '$lib/engine/types';
+import type { GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { vec } from '$lib/engine/vec';
 import { decodeState, encodeState } from './codec';
 import { LocalSource } from './sources';
@@ -10,14 +10,14 @@ import { LocalSource } from './sources';
 describe('codec', () => {
   it('round-trips states in every phase exactly', () => {
     const rules: MatchRules = { kind: 'goals', target: 2 };
-    const teams: Teams = { blue: 3, orange: 1 };
+    const teamSizes: TeamSizes = { blue: 3, orange: 1 };
     let seed = 3;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
-    let s: GameState = createState(teams, rules);
+    let s: GameState = createState(teamSizes, rules);
     const seen = new Set<string>();
     const check = () => {
       seen.add(s.match.winner ? 'winner' : s.match.phase.kind);
-      expect(decodeState(encodeState(s), rules, teams)).toEqual(s);
+      expect(decodeState(encodeState(s), rules, teamSizes)).toEqual(s);
     };
     for (let goal = 0; goal < 2; goal++) {
       // Random play, then fire the ball into the right goal so every phase and a winner occur.

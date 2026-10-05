@@ -14,7 +14,7 @@ from panenka.env.engine import constants, stadium
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures" / "physics.json").read_text())
 CASES = {case["name"]: case for case in FIXTURE["cases"]}
-BROWSER_ONLY = {"TICK_MS", "MAX_FRAME_MS"}  # game loop timing, not physics
+NOT_PHYSICS = {"TICK_MS", "MAX_FRAME_MS", "SNAPSHOT_NUM"}  # game loop and network timing, not physics
 
 
 def to_world(flat: list[dict]) -> World:
@@ -51,7 +51,7 @@ def step_each_tick(case: dict) -> tuple[World, World]:
 
 def test_constants():
     for name, value in FIXTURE["constants"].items():
-        if name not in BROWSER_ONLY:
+        if name not in NOT_PHYSICS:
             assert getattr(constants, name) == value, name
 
 
@@ -83,7 +83,7 @@ def test_kickoff(name):
     with jax.enable_x64(True):
         case = CASES[name]
         expected = to_world([case["initial"]])
-        actual = jax.tree.map(lambda x: x[None], kickoff_world(**case["teams"]))
+        actual = jax.tree.map(lambda x: x[None], kickoff_world(**case["teamSizes"]))
         assert_worlds_close(actual, expected, 0, name)
 
 

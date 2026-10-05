@@ -3,7 +3,7 @@ import type { Action, GameState } from '$lib/engine/types';
 
 // Chooses one player's action each tick: keyboard, network input, or an AI policy.
 export interface Controller {
-  getAction(state: GameState, playerIndex: number): Action;
+  getAction(state: GameState): Action;
   attach?(): void;
   detach?(): void;
 }
@@ -24,14 +24,17 @@ export class KeyboardController implements Controller {
 
   private onKeyDown = (e: KeyboardEvent) => this.held.add(e.code);
   private onKeyUp = (e: KeyboardEvent) => this.held.delete(e.code);
+  private onBlur = () => this.held.clear();
 
   attach() {
     addEventListener('keydown', this.onKeyDown);
     addEventListener('keyup', this.onKeyUp);
+    addEventListener('blur', this.onBlur);
   }
 
   detach() {
     removeEventListener('keydown', this.onKeyDown);
     removeEventListener('keyup', this.onKeyUp);
+    removeEventListener('blur', this.onBlur)
   }
 }

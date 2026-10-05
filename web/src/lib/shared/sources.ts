@@ -23,11 +23,11 @@ export class LocalSource implements StateSource {
   readonly recording: Recording;
 
   constructor(controllers: Record<Team, Controller[]>, rules: MatchRules) {
-    const teams = { blue: controllers.blue.length, orange: controllers.orange.length };
+    const teamSizes = { blue: controllers.blue.length, orange: controllers.orange.length };
     this.controllers = [...controllers.blue, ...controllers.orange];
-    this.state = createState(teams, rules);
+    this.state = createState(teamSizes, rules);
     this.prev = this.state;
-    this.recording = { rules, teams, actions: [] };
+    this.recording = { rules, teamSizes, actions: [] };
   }
 
   get latest(): GameState {

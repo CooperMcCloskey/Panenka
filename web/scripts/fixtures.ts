@@ -11,8 +11,8 @@ import {
 import { physicsStep } from '../src/lib/engine/physics';
 import { goalScoredBy } from '../src/lib/engine/rules';
 import { BALL_WALLS, GOAL_BOTTOM, GOAL_TOP, PLAYER_WALLS, POSTS, type Wall } from '../src/lib/engine/stadium';
-import { kickoffWorld, teamOf } from '../src/lib/engine/state';
-import type { Action, Teams, World } from '../src/lib/engine/types';
+import { kickoffWorld } from '../src/lib/engine/state';
+import type { Action, TeamSizes, World } from '../src/lib/engine/types';
 import { vec, type Vec2 } from '../src/lib/engine/vec';
 
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), '../../rl/fixtures/physics.json');
@@ -28,7 +28,7 @@ const flatWall = (w: Wall) => [w.a.x, w.a.y, w.b.x, w.b.y, w.elasticity];
 
 type Policy = (w: World, tick: number) => Action[];
 
-const ONE_V_ONE: Teams = { blue: 1, orange: 1 };
+const ONE_V_ONE: TeamSizes = { blue: 1, orange: 1 };
 
 function rng(seed: number) {
   return () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
@@ -55,14 +55,14 @@ function chasePolicy(seed: number): Policy {
 // Players run into posts, world edges and corners; orange mirrors blue. [moveX, moveY, kick] per 100 ticks.
 const SCRIPT = [[-1, -1, 0], [0, 1, 1], [-1, 0, 0], [0, -1, 0], [1, 1, 1], [-1, 1, 0]] as const;
 
-function scriptedPolicy(teams: Teams): Policy {
+function scriptedPolicy(teamSizes: TeamSizes): Policy {
   return (w, tick) => {
     const [moveX, moveY, kick] = SCRIPT[Math.floor(tick / 100)];
-    return w.players.map((_, i) => ({ moveX: teamOf(teams, i) === 'orange' ? -moveX : moveX, moveY, kick: kick === 1 }) as Action);
+    return w.players.map((_, i) => ({ moveX: i >= teamSizes.blue ? -moveX : moveX, moveY, kick: kick === 1 }) as Action); // orange players come after blue
   };
 }
 
-function run(name: string, teams: Teams, policy: Policy, initial = kickoffWorld(teams), ticks = TICKS) {
+function run(name: string, teamSizes: TeamSizes, policy: Policy, initial = kickoffWorld(teamSizes), ticks = TICKS) {
   const actions: number[][] = [];
   const states = [];
   let w = initial;
@@ -72,7 +72,7 @@ function run(name: string, teams: Teams, policy: Policy, initial = kickoffWorld(
     w = physicsStep(w, a);
     states.push(flatWorld(w));
   }
-  return { name, teams, initial: flatWorld(initial), actions, states };
+  return { name, teamSizes, initial: flatWorld(initial), actions, states };
 }
 
 const idle = (w: World) => w.players.map(() => IDLE);

@@ -1,7 +1,7 @@
 export const CONTROL_ACTIONS = ['up', 'left', 'down', 'right', 'kick'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 export type KeyboardControls = Record<ControlAction, string>; // KeyboardEvent.code per action
-export type PlayerControls = [KeyboardControls, KeyboardControls];
+export type PlayerControls = [KeyboardControls, KeyboardControls]; // [0] left side of the keyboard, [1] right side
 
 const STORAGE_KEY = 'panenka.controls';
 

@@ -1,30 +1,38 @@
 import { IDLE } from '$lib/engine/actions';
 import { SNAPSHOT_NUM, TICK_MS } from '$lib/engine/constants';
-import { createState } from '$lib/engine/state';
-import type { Action, Body, MatchRules } from '$lib/engine/types';
+import type { Body, GameState, MatchRules } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
-import type { ClientMessage, ServerMessage } from '$lib/shared/protocol';
+import type { KeyboardController } from '$lib/shared/controller';
+import type { ClientMessage, LobbyPlayer, LobbyPlayers, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
-import { loadControls } from './bindings';
 
 const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
 
 export class NetworkSource implements StateSource {
+  private controllers: Record<string, KeyboardController> = {} 
   private socket?: WebSocket;
-  private held = new Set<string>();
-  private controls = loadControls()[0];
-  private state;
-  private previous;
+
+  private state?: GameState;
+  private previous?: GameState;
+
+  private lobbyRev = 0;
+  private lobbyPlayers: LobbyPlayers = {};
+  private controlledPlayers: string[] = []
+
   private age = SNAPSHOT_MS;
   private seq = 0;
   private timer?: ReturnType<typeof setInterval>;
+
   private started = false;
-  constructor(private code: string, private token: string, private rules: MatchRules,
-    private numPlayers: number, private onMessage: (message: ServerMessage) => void,
-    private onStatus: (status: string) => void) {
-    this.state = createState({ blue: numPlayers, orange: numPlayers }, rules);
-    this.previous = this.state;
-  }
+
+  constructor(
+    private code: string, 
+    private token: string, 
+    private rules: MatchRules,
+    private onMessageCallback: (message: ServerMessage) => void,
+    private onStatus: (status: string) => void
+  ){}
+  
   start() {
     if (this.socket) return;
     const url = new URL(window.location.href);
@@ -32,67 +40,69 @@ export class NetworkSource implements StateSource {
     url.port = '8080'; url.pathname = '/'; url.search = ''; url.hash = '';
     const socket = this.socket = new WebSocket(url);
     this.onStatus('Connecting');
+
     socket.onopen = () => {
       this.send({ type: 'join', code: this.code, token: this.token });
       this.onStatus('Connected');
-    };
-    socket.onmessage = event => {
-      const message: ServerMessage = JSON.parse(event.data);
-      if (message.type === 'lobby' && !message.active) {
-        this.started = false;
-        this.held.clear();
-      }
-      if (message.type === 'snapshot') {
-        const next = decodeState(new Float64Array(message.state), this.rules,
-          { blue: this.numPlayers, orange: this.numPlayers });
-        this.previous = this.started ? this.state : next;
-        this.state = next; this.age = 0; this.started = true;
-      }
-      this.onMessage(message);
     };
     socket.onclose = event => {
       this.stop();
       this.onStatus(event.reason || 'Disconnected — reload to reconnect');
     };
+    socket.onmessage = event => {
+      const message: ServerMessage = JSON.parse(event.data);
+      this.onMessage(message)
+    };
     socket.onerror = () => this.onStatus('Connection failed');
-    addEventListener('keydown', this.keydown);
-    addEventListener('keyup', this.keyup);
-    addEventListener('blur', this.blur);
+
     this.timer = setInterval(() => this.sendInput(), 100);
   }
+
+  private onMessage(message: ServerMessage){
+    this.onMessageCallback(message);
+    if(message.type === "lobby") this.onLobbyMessage(message);
+    else if(message.type === "snapshot") this.onSnapshotMessage(message);
+    else if(message.type === "error") this.onErrorMessage(message);
+    throw new Error("Unknown error type");
+  }
+  private onLobbyMessage(message: ServerMessage & {type: "lobby"}){
+    if(message.rev <= this.lobbyRev || this.started) return;
+    this.rules = message.rules;
+    this.lobbyPlayers = message.players;
+    this.controlledPlayers = message.you;
+    this.started = message.start;
+  }
+  private onSnapshotMessage(message: ServerMessage & {type: "snapshot"}){
+    const next = decodeState(
+      new Float64Array(message.state), 
+    );
+    this.previous = this.started ? this.state : next;
+    this.state = next; this.age = 0; this.started = true;
+  }
+  private onErrorMessage(message: ServerMessage & {type: "error"}){
+
+  }
+
   private send(message: ClientMessage) {
     if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 8192)
       this.socket.send(JSON.stringify(message));
   }
+
   startMatch() { this.send({ type: 'start' }); }
   private sendInput() {
-    const key = (name: string) => this.held.has(name) ? 1 : 0;
-    const c = this.controls;
-    const action: Action = { moveX: (key(c.right) - key(c.left)) as Action['moveX'],
-      moveY: (key(c.down) - key(c.up)) as Action['moveY'], kick: !!key(c.kick) };
-    this.send({ type: 'input', seq: this.seq++, action });
+    if(!this.state) return; 
+    const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction(this.state)])))
+    this.send({ type: 'input', seq: this.seq++, actions });
   }
-  private keydown = (e: KeyboardEvent) => {
-    if (!Object.values(this.controls).includes(e.code)) return;
-    e.preventDefault();
-    if (this.held.has(e.code)) return;
-    this.held.add(e.code); this.sendInput();
-  };
-  private keyup = (e: KeyboardEvent) => {
-    if (!Object.values(this.controls).includes(e.code)) return;
-    e.preventDefault(); this.held.delete(e.code); this.sendInput();
-  };
-  private blur = () => { this.held.clear(); this.sendInput(); };
+
   stop() {
-    clearInterval(this.timer);
-    removeEventListener('keydown', this.keydown);
-    removeEventListener('keyup', this.keyup);
-    removeEventListener('blur', this.blur);
-    this.held.clear();
-    this.send({ type: 'input', seq: this.seq++, action: IDLE });
+    Object.values(this.controllers).forEach(c => c.detach());
+    const idleActions = Object.fromEntries(Object.keys(this.controllers).map(k => [k, IDLE]))
+    this.send({ type: 'input', seq: this.seq++, actions: idleActions });
     const socket = this.socket; this.socket = undefined;
     if (socket) { socket.onclose = null; socket.close(); }
   }
+
   update(dtMs: number) { this.age += dtMs; }
   currentState() {
     const t = Math.min(this.age / SNAPSHOT_MS, 1);

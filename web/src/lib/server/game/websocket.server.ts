@@ -58,7 +58,7 @@ export function startWebSocketServer() {
           clearTimeout(joinTimeout);
           ping();
         } else if (message?.type === 'start') room.startMatch(token, socket);
-        else if (isInput(message)) room.input(token, socket, message.seq, message.action);
+        else if (isInput(message)) room.input(token, socket, message.seq, message.actions);
         else socket.close(1008, 'Invalid message');
       } catch { socket.close(1008, 'Invalid JSON'); }
     });

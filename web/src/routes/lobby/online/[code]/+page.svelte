@@ -9,10 +9,10 @@
   let usernames = $state<string[]>([]);
   let connected = $state<boolean[]>([]);
   let playing = $state(false);
-  let status = $state('Connecting');
+  let status: string = $state('Connecting');
   let playerIndex = $state(0);
   let active = $state(false);
-  const canStart = $derived(status === 'Connected' && !active
+  const canStart = $derived(status === "Connected" && !active
     && connected.length === data.room.numPlayers * 2 && connected.every(Boolean));
 
   function returnToLobby() {
@@ -37,7 +37,7 @@
 
 {#if playing && source}
   <Match {source} onEnd={returnToLobby} manageSource={false} />
-  {#if status !== 'Connected'}<p class="connection" role="status">{status}</p>{/if}
+  {#if status !== 'Connected'}<h2 class="connection" role="status">{status}</h2>{/if}
 {:else}
   <h1>Room {data.room.code}</h1>
   <p>Share this code. Once all {data.room.numPlayers * 2} players are connected, anyone can start a game.</p>
@@ -52,5 +52,11 @@
 {/if}
 
 <style>
-  .connection { position: fixed; bottom: 0; left: 1em; z-index: 1; }
+  .connection { 
+    position: fixed; 
+    top: 50%;
+    left: 50%;
+    color: var(--black);
+    z-index: 1; 
+  }
 </style>
