@@ -6,19 +6,20 @@ import { createState } from '$lib/engine/state';
 import { step } from '$lib/engine/step';
 import type { Action, GameState, MatchRules, Team } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
-import type { ServerMessage } from '$lib/shared/protocol';
-import type { Client, LobbyPlayer } from "$lib/shared/protocol";
+import type { LobbyPlayers, ServerMessage } from '$lib/shared/protocol';
+import type { Client, LobbyPlayer, ClientAction } from "$lib/shared/protocol";
 
 // Uuid for playerID and clientID
 const Uuid = crypto.randomUUID
 
 // Creating room class
 export class Room {
-  
+
   readonly clients: Record<string, Client> = {};
-  readonly players: Record<string, LobbyPlayer> = {};
+  readonly players: LobbyPlayers = {};
   readonly rules: MatchRules = {kind:"time", minutes: 5};
   state?: GameState;
+
   private timer?: ReturnType<typeof setInterval>;
   private endTimer?: ReturnType<typeof setTimeout>;
   private active = false;
@@ -46,14 +47,14 @@ export class Room {
       for (let i = 0; i < num; i++){
         client.playerIDs.push(playerID);
     }
-    const player: LobbyPlayer = {username, action: IDLE, queue: [], seq: -1, received: 0, team};
+    const player: LobbyPlayer = {username, team};
     this.players[playerID] = player;
     this.broadcastLobby();
     return player;
   };
 
-  addClient(){
-    const client = { token: nanoid(32), playerIDs: [] };
+  addClient(username: string){
+    const client = { token: nanoid(32), playerIDs: [], username};
     return client;
   }
 
@@ -67,15 +68,23 @@ export class Room {
   // TODO Refactor
   // Probablly getting axed
   broadcastLobby() {
-    Object.values(this.clients).forEach((c) => {
-      if (c.socket) this.send(c.socket, { type: 'lobby', usernames: this.usernames,
-        connected: Object.values(this.players).map(p =>
-          Object.values(this.clients).some(client =>
-            !!client.socket &&
-            client.playerIDs.some(id => this.players[id] === p)
-      )
-    ), active: this.active });
-    });
+    const clients = Object.values(this.clients);
+    const usernames = clients.map(c => c.username);
+    const connected = clients.map(c => c.socket?.readyState === WebSocket.OPEN);
+    const lobbyState = { rules: this.rules, players: this.players };
+
+    for (const client of clients) {
+      if (client.socket) {
+        this.send(client.socket, {
+          type: 'lobby',
+          usernames,
+          connected,
+          lobbyState,
+          you: client.playerIDs,
+          active: this.active,
+        });
+      }
+    }
   }
 
   connect(token: string, socket: WebSocket, index?: number) {
@@ -117,6 +126,7 @@ export class Room {
   // }
 
   private broadcastSnapshot() {
+    if (!this.state) return undefined;
     const message: ServerMessage = { type: 'snapshot', state: Array.from(encodeState(this.state)) };
     Object.values(this.clients).forEach(c => { if (c.socket) this.send(c.socket, message); });
   }

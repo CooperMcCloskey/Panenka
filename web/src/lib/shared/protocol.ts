@@ -1,4 +1,5 @@
 import type { Action, MatchRules, Team } from '$lib/engine/types';
+import { WebSocket } from "ws";
 
 export type LobbyPlayer = {username: string, team: Team}
 
@@ -6,13 +7,15 @@ export type Client = {
   token: string,
   socket?: WebSocket,
   playerIDs: string[],
+  username: string,
 }
 
 export type LobbyPlayers = Record<string, LobbyPlayer>
 
 export type ClientAction = {
   action: Record<string, Action>,
-  queue: Record<string, Action>[],
+  // Record of playerID and actions
+  queue: Record<string, Action[]>,
   seq: number, //the number of actions sent (used to drop old updates)
   recieved: number, //ms since last message arrived
 }
@@ -21,20 +24,20 @@ export type LobbyState = {
   rev: number,
   rules: MatchRules,  
   players: LobbyPlayers,
+  // Record of clientID and client
+  spectators: Record<string, Client>,
 }
 
 export type ClientMessage =
   | { type: 'join', code: string, token: string }
-  | { type: 'start' }
+  | { type: 'start' , lobbyState: LobbyState }
   | { type: 'input', seq: number, actions: Record<string, Action>}
   | { type: 'setLobby', lobbyState: LobbyState }
 
 export type ServerMessage =
   | {
       type: 'lobby';
-      rev: number; // lets clients ignore out-of-date updates
-      rules: MatchRules;
-      players: Record<string, LobbyPlayer>;
+      lobbyState: LobbyState;
       you: string[]; // the player IDs this client controls
       start: boolean;
     }
