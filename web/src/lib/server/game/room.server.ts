@@ -2,19 +2,20 @@ import { nanoid } from 'nanoid';
 import { WebSocket } from 'ws';
 import { IDLE } from '$lib/engine/actions';
 import { TICK_MS, MAX_FRAME_MS, SNAPSHOT_NUM } from '$lib/engine/constants';
-import { createState } from '$lib/engine/state';
 import { step } from '$lib/engine/step';
 import type { Action, GameState, MatchRules, Team } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
-import type { LobbyPlayers, ServerMessage } from '$lib/shared/protocol';
-import type { Client, LobbyPlayer, ClientAction } from "$lib/shared/protocol";
+import type { LobbyPlayers, LobbyState, ServerMessage } from '$lib/shared/protocol';
+import type { Client, LobbyPlayer } from "$lib/shared/protocol";
 
-// Uuid for playerID and clientID
-const Uuid = crypto.randomUUID
+// Uuid for playerID and clientID. Wrapped rather than `crypto.randomUUID` on its own:
+// it has to be called on crypto, or it throws "Value of this must be of type Crypto"
+const Uuid = () => crypto.randomUUID();
 
 // Creating room class
 export class Room {
 
+  readonly adminId: string;
   readonly clients: Record<string, Client> = {};
   readonly players: LobbyPlayers = {};
   readonly rules: MatchRules = {kind:"time", minutes: 5};
@@ -25,10 +26,26 @@ export class Room {
   private active = false;
   private last = 0;
   private accumulator = 0;
-  constructor(readonly code: string) {};
 
-  // Methods
+  constructor(readonly code: string, adminUsername: string) {
+    const {clientId: adminId, client: adminClient} = this.addClient(adminUsername);
+    this.adminId = adminId;
+  };
+
   get usernames() { return Object.values(this.players).map( p => p.username); }
+
+  get spectators(): Record<string, string> { 
+    return Object.fromEntries(
+      Object.entries(this.clients)
+      .filter(([_, client])=>(client.playerIDs.length === 0))
+      .map(([id, client])=>([id, client.username]))
+    )
+  }
+
+  get lobbyState(): LobbyState { 
+    const {rules, players, spectators} = this;
+    return { rev: 0, rules, players, spectators } 
+  }
 
   // Modular get player func
   getPlayerFromClient(c: Client, index?: number):LobbyPlayer {
@@ -37,8 +54,6 @@ export class Room {
     const player = this.players[playerID];
     return player;
   };
-
-  summary() { return { code: this.code, rules: this.rules, usernames: this.usernames }; }
 
   // Add player and client
   addPlayer(token: string, username: string, num: number, team: Team) {
@@ -52,10 +67,17 @@ export class Room {
     this.broadcastLobby();
     return player;
   };
-
-  addClient(username: string){
+  
+  getToken(id: string): string | undefined { return this.clients[id].token }
+  findClient(token: string | undefined): {clientId: string, client: Client} | undefined {
+    const entry = Object.entries(this.clients).find(([, c]) => c.token === token);
+    return entry && { clientId: entry[0], client: entry[1] };
+  }
+  addClient(username: string): {clientId: string, client: Client}{ 
     const client = { token: nanoid(32), playerIDs: [], username};
-    return client;
+    const clientId = Uuid();
+    this.clients[clientId] = client;
+    return {clientId, client};
   }
 
   send(socket: WebSocket, message: ServerMessage) {
@@ -80,7 +102,7 @@ export class Room {
           usernames,
           connected,
           lobbyState,
-          you: client.playerIDs,
+          controlledPlayerIds: client.playerIDs,
           active: this.active,
         });
       }

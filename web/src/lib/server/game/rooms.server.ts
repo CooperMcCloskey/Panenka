@@ -42,14 +42,14 @@ const globalRooms = globalThis as typeof globalThis & { panenkaRooms?: Map<strin
 const rooms = globalRooms.panenkaRooms ??= new Map<string, Room>();
 const generateCode = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 6);
 
-export function createRoom(rules: MatchRules, numPlayers: number, username: string): Room {
+export function createRoom(): Room {
   let code: string;
   do { code = generateCode(); } while (rooms.has(code));
-  const room = new Room(code, rules, numPlayers);
-  room.addPlayer(username);
+  const room = new Room(code);
   rooms.set(code, room);
   return room;
 }
+
 export function getRoom(code: string) {
   return rooms.get(code.toUpperCase()); 
 }

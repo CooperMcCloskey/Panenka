@@ -24,8 +24,8 @@ export type LobbyState = {
   rev: number,
   rules: MatchRules,  
   players: LobbyPlayers,
-  // Record of clientID and client
-  spectators: Record<string, Client>,
+  // Record of clientID and client username
+  spectators: Record<string, string>,
 }
 
 export type ClientMessage =
@@ -38,7 +38,7 @@ export type ServerMessage =
   | {
       type: 'lobby';
       lobbyState: LobbyState;
-      you: string[]; // the player IDs this client controls
+      controlledPlayerIds: string[]; // the player IDs this client controls
       start: boolean;
     }
   | { type: 'snapshot', state: number[] }

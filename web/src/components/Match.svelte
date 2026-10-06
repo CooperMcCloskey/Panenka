@@ -5,10 +5,15 @@
   import MatchHeader from './MatchHeader.svelte';
 
   // onEnd is called END_DELAY_MS after the match has a winner.
-  let { source, onEnd, manageSource = true }: {
-    source: StateSource; onEnd?: () => void; manageSource?: boolean;
-  } = $props();
   const END_DELAY_MS = 3000;
+
+  let { 
+    source, 
+    onEnd, 
+  }: {
+    source: StateSource; 
+    onEnd?: () => void; 
+  } = $props();
 
   let canvasArea: HTMLDivElement;
   let canvas: HTMLCanvasElement;
@@ -41,13 +46,11 @@
       raf = requestAnimationFrame(frame);
     }
 
-    if (manageSource) source.start();
     raf = requestAnimationFrame(frame);
 
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
-      if (manageSource) source.stop();
     };
   });
 </script>

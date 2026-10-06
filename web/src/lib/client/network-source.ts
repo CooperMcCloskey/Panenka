@@ -4,7 +4,7 @@ import { createState } from '$lib/engine/state';
 import type { Body, GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
 import type { KeyboardController } from '$lib/shared/controller';
-import type { ClientMessage, LobbyPlayers, ServerMessage } from '$lib/shared/protocol';
+import type { ClientMessage, LobbyPlayers, LobbyState, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
 
 const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
@@ -17,7 +17,6 @@ export class NetworkSource implements StateSource {
   private previous?: GameState;
 
   private lobbyRev = 0;
-  private lobbyPlayers: LobbyPlayers = {};
   private controlledPlayers: string[] = []
 
   private age = SNAPSHOT_MS;
@@ -29,7 +28,7 @@ export class NetworkSource implements StateSource {
   constructor(
     private code: string, 
     private token: string, 
-    private rules: MatchRules,
+    private lobbyState: LobbyState,
     private onMessageCallback: (message: ServerMessage) => void,
     private onStatus: (status: string) => void
   ){}
@@ -62,7 +61,7 @@ export class NetworkSource implements StateSource {
   }
   stop() {
     Object.values(this.controllers).forEach(c => c.detach());
-    
+
     const idleActions = Object.fromEntries(Object.keys(this.controllers).map(k => [k, IDLE]))
     this.send({ type: 'input', seq: this.seq++, actions: idleActions });
     const socket = this.socket; this.socket = undefined;
@@ -77,10 +76,9 @@ export class NetworkSource implements StateSource {
     else throw new Error("Unknown error type");
   }
   private onLobbyMessage(message: ServerMessage & {type: "lobby"}){
-    if(message.rev <= this.lobbyRev || this.started) return;
-    this.rules = message.rules;
-    this.lobbyPlayers = message.players;
-    this.controlledPlayers = message.you;
+    if(message.lobbyState.rev <= this.lobbyRev || this.started) return;
+    this.lobbyState = message.lobbyState
+    this.controlledPlayers = message.controlledPlayerIds;
     this.started = message.start;
   }
   private onSnapshotMessage(message: ServerMessage & {type: "snapshot"}){
@@ -102,19 +100,19 @@ export class NetworkSource implements StateSource {
     const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction()])))
     this.send({ type: 'input', seq: this.seq++, actions });
   }
-  startMatch() { this.send({ type: 'start' }); }
+  startMatch() { this.send({ type: 'start', lobbyState: this.lobbyState }); }
 
   getTeamSizes(): TeamSizes{
     let blue = 0;
     let orange = 0;
-    Object.values(this.lobbyPlayers).forEach(p => p.team === "blue" ? blue++ : orange++)
+    Object.values(this.lobbyState.players).forEach(p => p.team === "blue" ? blue++ : orange++)
     return {blue, orange}
   }
 
   update(dtMs: number) { this.age += dtMs; }
   currentState(): GameState {
     const {state, previous} = this;
-    if(!state) return createState(this.getTeamSizes(), this.rules)
+    if(!state) return createState(this.getTeamSizes(), this.lobbyState.rules)
     if(!previous) return state;
 
     const t = Math.min(this.age / SNAPSHOT_MS, 1);
