@@ -5,8 +5,10 @@ import { TICK_MS, MAX_FRAME_MS, SNAPSHOT_NUM } from '$lib/engine/constants';
 import { step } from '$lib/engine/step';
 import type { Action, GameState, MatchRules, Team } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
-import type { LobbyPlayers, LobbyState, ServerMessage } from '$lib/shared/protocol';
+import type { ClientAction, LobbyPlayers, LobbyState, PlayerInput, ServerMessage } from '$lib/shared/protocol';
 import type { Client, LobbyPlayer } from "$lib/shared/protocol";
+import { MAX_TEAMSIZE } from '$lib/engine/rules';
+import { createState } from '$lib/engine/state'
 
 // Uuid for playerID and clientID. Wrapped rather than `crypto.randomUUID` on its own:
 // it has to be called on crypto, or it throws "Value of this must be of type Crypto"
@@ -16,6 +18,7 @@ const Uuid = () => crypto.randomUUID();
 export class Room {
 
   readonly adminId: string;
+  // Client ID mapped to client
   readonly clients: Record<string, Client> = {};
   readonly players: LobbyPlayers = {};
   readonly rules: MatchRules = {kind:"time", minutes: 5};
@@ -23,9 +26,12 @@ export class Room {
 
   private timer?: ReturnType<typeof setInterval>;
   private endTimer?: ReturnType<typeof setTimeout>;
-  private active = false;
+  private start = false;
   private last = 0;
   private accumulator = 0;
+  private rev = 0;
+  // Maps playerID to playerAction
+  private readonly inputs: Record<string,PlayerInput> = {};
 
   constructor(readonly code: string, adminUsername: string) {
     const {clientId: adminId, client: adminClient} = this.addClient(adminUsername);
@@ -34,6 +40,7 @@ export class Room {
 
   get usernames() { return Object.values(this.players).map( p => p.username); }
 
+  // Id's mapped to usernames
   get spectators(): Record<string, string> { 
     return Object.fromEntries(
       Object.entries(this.clients)
@@ -43,8 +50,14 @@ export class Room {
   }
 
   get lobbyState(): LobbyState { 
-    const {rules, players, spectators} = this;
-    return { rev: 0, rules, players, spectators } 
+    const {rules, players, spectators, rev} = this;
+    return { rev, rules, players, spectators } 
+  }
+
+  getTeams(): {blue: number, orange: number} {
+    const orange: number = Object.values(this.players).filter(c => c.team === "blue").length;
+    const blue: number = Object.keys(this.players).length - orange;
+    return {blue, orange}
   }
 
   // Modular get player func
@@ -65,10 +78,18 @@ export class Room {
     const player: LobbyPlayer = {username, team};
     this.players[playerID] = player;
     this.broadcastLobby();
+    // Initialising player input state
+    this.inputs[playerID] = {
+      action: IDLE,
+      queue: [],
+      seq: -1,
+      received: performance.now(),
+    };
     return player;
   };
   
-  getToken(id: string): string | undefined { return this.clients[id].token }
+  getToken(id: string): string | undefined { return this.clients[id].token };
+
   findClient(token: string | undefined): {clientId: string, client: Client} | undefined {
     const entry = Object.entries(this.clients).find(([, c]) => c.token === token);
     return entry && { clientId: entry[0], client: entry[1] };
@@ -87,65 +108,58 @@ export class Room {
     }
   }
 
-  // TODO Refactor
   // Probablly getting axed
   broadcastLobby() {
     const clients = Object.values(this.clients);
-    const usernames = clients.map(c => c.username);
-    const connected = clients.map(c => c.socket?.readyState === WebSocket.OPEN);
-    const lobbyState = { rules: this.rules, players: this.players };
+    const lobbyState = this.lobbyState;
+    const start = this.start;
 
     for (const client of clients) {
       if (client.socket) {
         this.send(client.socket, {
           type: 'lobby',
-          usernames,
-          connected,
           lobbyState,
           controlledPlayerIds: client.playerIDs,
-          active: this.active,
+          start,
         });
       }
     }
-  }
+  };
 
-  connect(token: string, socket: WebSocket, index?: number) {
-    const client = this.clients[token];
-    if (!client) return undefined;
+  connect(token: string, socket: WebSocket) {
+    const found = this.findClient(token)!;
+    if (!found) return undefined;
+    const {clientId, client} = found;
     client.socket?.close(1000, 'Reconnected elsewhere');
     client.socket = socket;
 
-    const player = this.getPlayerFromClient(client, index)
-
-    player.action = IDLE; player.queue = []; player.seq = -1; player.received = performance.now();
-
-    // TODO Fix broadcast function
     this.broadcastLobby();
 
-    if (this.active) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)) });
+    if (this.start && this.state) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)) });
 
-    // Fix
-    if (this.state && this.active && !this.state.match.winner && !this.timer) {
+    if (this.state && this.start && !this.state.match.winner && !this.timer) {
       this.last = performance.now();
       this.accumulator = 0;
       this.timer = setInterval(() => this.update(), TICK_MS);
     }
-    return player;
+    return client;
   }
+  // TODO Fix, implement adminID check at some point
+  startMatch(token: string, socket: WebSocket ) {
+    if (this.start || !Object.values(this.clients).some(c => c.token === token && c.socket === socket)
+      || Object.keys(this.players).length < MAX_TEAMSIZE * 2 || !Object.values(this.clients).every(c => c.socket)) return;
+    // Getting number of blue players and orange players
+    const {blue, orange} = this.getTeams();
 
-  // TODO Getting axed by Cooper
-  // startMatch(token: string, socket: WebSocket) {
-  //   if (this.active || !Object.values(this.clients).some(c => c.token === token && c.socket === socket)
-  //     || this.players.length !== this.numPlayers * 2 || !this.players.every(p => p.socket)) return;
-  //   this.state = createState({ blue: this.numPlayers, orange: this.numPlayers }, this.rules);
-  //   this.players.forEach(p => { p.action = IDLE; p.queue = []; p.received = performance.now(); });
-  //   this.active = true;
-  //   this.last = performance.now();
-  //   this.accumulator = 0;
-  //   this.broadcastLobby();
-  //   this.broadcastSnapshot();
-  //   this.timer = setInterval(() => this.update(), TICK_MS);
-  // }
+    // TODO make sure this.rules has been updated before creating state
+    this.state = createState({ blue: blue, orange: orange }, this.rules);
+    this.start = true;
+    this.last = performance.now();
+    this.accumulator = 0;
+    this.broadcastLobby();
+    this.broadcastSnapshot();
+    this.timer = setInterval(() => this.update(), TICK_MS);
+  }
 
   private broadcastSnapshot() {
     if (!this.state) return undefined;
@@ -153,21 +167,26 @@ export class Room {
     Object.values(this.clients).forEach(c => { if (c.socket) this.send(c.socket, message); });
   }
 
-  input(token: string, socket: WebSocket, seq: number, action: Action, playerIndex?: number) {
+  input(token: string, socket: WebSocket, clientAction: ClientAction) {
     const c = Object.values(this.clients).find(c => c.token === token && c.socket === socket);
     if (!c) return undefined;
 
-    const p = this.getPlayerFromClient(c, playerIndex)
+    const { seq } = clientAction;
+    const received = performance.now();
 
-    if (!p || seq <= p.seq) return;
-    p.seq = seq; p.received = performance.now();
-    // Keep kick transitions until a simulation tick consumes them
-    const previous = p.queue.at(-1) ?? p.action;
-    if (previous.kick !== action.kick) {
-      if (p.queue.length >= 16) { socket.close(1008, 'Too many inputs'); return; }
-      p.queue.push(action);
-    } else if (p.queue.length) p.queue[p.queue.length - 1] = action;
-    else p.action = action;
+    for (const [playerID, action] of Object.entries(clientAction.action)) {
+      if (!c.playerIDs.includes(playerID)) continue;
+      const p = this.inputs[playerID];
+      if (!p || seq <= p.seq) continue;
+      p.seq = seq; p.received = received;
+      // Keep kick transitions until a simulation tick consumes them
+      const previous = p.queue.at(-1) ?? p.action;
+      if (previous.kick !== action.kick) {
+        if (p.queue.length >= 16) {   socket.close(1008, 'Too many inputs'); return; }
+        p.queue.push(action);
+      } else if (p.queue.length) p.queue[p.queue.length - 1] = action;
+      else p.action = action;
+    }
   }
 
   disconnect(socket: WebSocket) {
@@ -175,8 +194,13 @@ export class Room {
     if (!c) return;
     c.socket = undefined; 
 
+    // Loop for each player in a client
     for (let i = 0; i < c.playerIDs.length; i++){
-      const player = this.getPlayerFromClient(c,i)
+      // Get playerID
+      let playerId = c.playerIDs[i];
+      //Then get the p object from inputs and set them to nothing
+      // TODO figure out if this actually needs doing
+      let player = this.inputs[playerId];
       player.action = IDLE; player.queue = [];
     }
 
@@ -184,27 +208,54 @@ export class Room {
     if (!Object.values(this.clients).some(c=> c.socket)) this.stop();
   }
 
-  removePlayer(playerID: string) {
-    const player = this.players[playerID];
-    if (!player) return;
-    this.stop();
-    this.active = false;
-    delete this.players[playerID];
+  // Function no longer ends the game if a client is removed
+  removeClient(token: string) {
+    const c = Object.values(this.clients).find(c => c.token === token);
+    if (!c) return;
+    for (const playerId of [...c.playerIDs]) {
+      this.removePlayer(playerId);
+    } 
 
-    // TODO (fix) createState is being altered by cooper so i have no idea how this is gna work
-    // this.state = createState({ blue: this.numPlayers, orange: this.numPlayers }, this.rules);
+    const found = this.findClient(token);
+    if (!found) return;
 
+    const { clientId, client: client } = found;
+
+    delete this.clients[clientId];
+  
+    // Old code
     // Basically ends the game
-    Object.values(this.players).forEach(p => { p.action = IDLE; p.queue = []; });
-    this.broadcastLobby();
+    // Object.values(this.inputs).forEach(p => { p.action = IDLE; p.queue = []; });
+    // this.stop;
+    // this.start = false;
+  }
+
+  // Remove player without ending the game, useful for when reverting back to spectator
+  removePlayer(playerId: string) {
+    const player = this.players[playerId];
+    if (!player) return;
+    const client = Object.values(this.clients).find(c => c.playerIDs.includes(playerId));
+    if (!client) return;
+    // Remove player from player array
+    delete this.players[playerId];
+    // Remove the players input state
+    delete this.inputs[playerId];
+    // Removing the player from the associated client
+    client.playerIDs = client.playerIDs.filter(id => id !== playerId);
+    const {blue, orange} = this.getTeams();
+    this.state = createState({ blue: blue, orange: orange }, this.rules);
+    this.broadcastLobby()
   }
 
   private update() {
+    // TODO need a way to initialise state instead of having this each time
+    if (!this.state) return;
     const now = performance.now();
     this.accumulator += Math.min(now - this.last, MAX_FRAME_MS);
     this.last = now;
+    //TODO need to check this actuall works because its been janked together
     while (this.accumulator >= TICK_MS) {
-      const actions = Object.values(this.players).map(p => {
+      const actions = Object.values(this.inputs).map(p => {
         if (now - p.received > 1000) { p.action = IDLE; p.queue = []; }
         else p.action = p.queue.shift() ?? p.action;
         return p.action;
@@ -215,7 +266,7 @@ export class Room {
         this.broadcastSnapshot();
         clearInterval(this.timer); this.timer = undefined;
         this.endTimer = setTimeout(() => {
-          this.active = false;
+          this.start = false;
           this.endTimer = undefined;
           this.broadcastLobby();
         }, 3000);
@@ -229,6 +280,7 @@ export class Room {
   stop() {
     clearInterval(this.timer); this.timer = undefined;
     clearTimeout(this.endTimer); this.endTimer = undefined;
-    if (this.state.match.winner !== null) this.active = false;
+    if (!this.state) return; // TODO Same jank fix that should be changed
+    if (this.state.match.winner !== null) this.start = false;
   }
 }

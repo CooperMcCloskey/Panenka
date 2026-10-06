@@ -1,8 +1,8 @@
 import { WebSocketServer } from 'ws';
-import { getRoom, cancelPlayerRemoval, removePlayer, schedulePlayerRemoval,
+import { getRoom, cancelPlayerRemoval, removeClient, schedulePlayerRemoval,
   deleteRoomIfEmpty, HEARTBEAT_MS, MAX_MISSED_PINGS } from './rooms.server';
 import type { Room } from './room.server';
-import { isInput } from '$lib/shared/protocol';
+import { isInput, type ClientMessage } from '$lib/shared/protocol';
 
 const runtime = globalThis as typeof globalThis & { panenkaSockets?: WebSocketServer };
 export function startWebSocketServer() {
@@ -16,7 +16,7 @@ export function startWebSocketServer() {
     let alive = true;
     let missedPings = 0;
     let count = 0;
-    let player: Room['players'][number] | undefined;
+    let client: Room['clients'][string] | undefined;
     let pingSentAt: number | undefined;
     let pingPayload = '';
     // May be useful for interpolation and testing
@@ -29,7 +29,7 @@ export function startWebSocketServer() {
     const joinTimeout = setTimeout(() => socket.close(1008, 'Join required'), 5000);
     const heartbeat = setInterval(() => {
       if (!alive && ++missedPings >= MAX_MISSED_PINGS) {
-        if (!room || !removePlayer(room, token, socket)) socket.terminate();
+        if (!room || !removeClient(room, token, socket)) socket.terminate();
         return;
       }
       ping();
@@ -45,18 +45,19 @@ export function startWebSocketServer() {
     socket.on('message', (data, binary) => {
       if (binary || ++count > 120) { socket.close(1008, 'Invalid input rate'); return; }
       try {
-        const message = JSON.parse(data.toString());
+        const message: ClientMessage = JSON.parse(data.toString());
         if (!room) {
           if (message?.type !== 'join' || typeof message.code !== 'string' || typeof message.token !== 'string') {
             socket.close(1008, 'Invalid join'); return;
           }
           const target = getRoom(message.code);
-          player = target?.connect(message.token, socket);
-          if (!player) { socket.close(1008, 'Invalid room session'); return; }
+          client = target?.connect(message.token, socket);
+          if (!client) { socket.close(1008, 'Invalid room session'); return; }
           room = target!; token = message.token;
           cancelPlayerRemoval(room, token);
           clearTimeout(joinTimeout);
           ping();
+          // TODO FIX START MATCH
         } else if (message?.type === 'start') room.startMatch(token, socket);
         else if (isInput(message)) room.input(token, socket, message.seq, message.actions);
         else socket.close(1008, 'Invalid message');
@@ -64,7 +65,7 @@ export function startWebSocketServer() {
     });
     socket.on('close', () => {
       clearTimeout(joinTimeout); clearInterval(heartbeat); clearInterval(rateTimer);
-      if (room && player?.socket === socket) {
+      if (room && client?.socket === socket) {
         room.disconnect(socket);
         schedulePlayerRemoval(room, token);
         deleteRoomIfEmpty(room);

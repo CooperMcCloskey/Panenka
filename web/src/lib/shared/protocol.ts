@@ -13,12 +13,21 @@ export type Client = {
 export type LobbyPlayers = Record<string, LobbyPlayer>
 
 export type ClientAction = {
+  // Record of playerID and action. One entry per player connected to client
   action: Record<string, Action>,
-  // Record of playerID and actions
+
+  // Queue of records of playerID and actions
   queue: Record<string, Action[]>,
   seq: number, //the number of actions sent (used to drop old updates)
   recieved: number, //ms since last message arrived
 }
+
+export type PlayerInput = {
+  action: Action;
+  queue: Action[];
+  seq: number;
+  received: number;
+};
 
 export type LobbyState = {
   rev: number,

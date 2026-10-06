@@ -13,12 +13,13 @@ export function cancelPlayerRemoval(room: Room, token: string) {
   timers?.delete(token);
 }
 
-export function removePlayer(room: Room, token: string, socket?: WebSocket) {
+export function removeClient(room: Room, token: string, socket?: WebSocket) {
   const player = room.players.find(p => p.token === token);
   // An old connection must never remove a player who has reconnected elsewhere.
   if (!player || (socket ? player.socket !== socket : !!player.socket)) return false;
+  // Rename function to cancelClientRemoval
   cancelPlayerRemoval(room, token);
-  room.removePlayer(token);
+  room.removeClient(token);
   socket?.terminate();
   deleteRoomIfEmpty(room);
   return true;
@@ -28,7 +29,7 @@ export function schedulePlayerRemoval(room: Room, token: string) {
   cancelPlayerRemoval(room, token);
   let timers = removalTimers.get(room);
   if (!timers) { timers = new Map(); removalTimers.set(room, timers); }
-  timers.set(token, setTimeout(() => removePlayer(room, token), HEARTBEAT_MS * MAX_MISSED_PINGS));
+  timers.set(token, setTimeout(() => removeClient(room, token), HEARTBEAT_MS * MAX_MISSED_PINGS));
 }
 
 export function deleteRoomIfEmpty(room: Room) {
