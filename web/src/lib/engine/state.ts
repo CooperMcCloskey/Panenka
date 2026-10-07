@@ -1,7 +1,6 @@
-import type { LobbyPlayers } from '$lib/shared/protocol';
 import { CENTER_X, CENTER_Y, KICKOFF_SPACING, PITCH_LEFT, PITCH_WIDTH } from './constants';
 import { KICKOFF_COUNTDOWN_TICKS } from './rules';
-import type { GameState, MatchRules, Player, Team, TeamSizes, World } from './types';
+import type { GameState, MatchRules, TeamSizes, World } from './types';
 import { vec } from './vec';
 
 export function createState(teamSizes: TeamSizes, rules: MatchRules): GameState {

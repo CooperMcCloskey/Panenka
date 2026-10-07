@@ -1,3 +1,0 @@
-Right now the agents play a game until the time runs out or a goal is scored.
-This can be changed to make the agents play matches and get a reward based on win/loss instead of rewards per goal. 
-This would require changing the observation space to include the number goals but could show different strategy.

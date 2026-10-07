@@ -1,7 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { dev } from "$app/environment";
 import { resolve } from "$app/paths";
-import { MAX_TEAMSIZE, MAX_MINUTES, MAX_GOAL_TARGET } from "$lib/engine/rules";
 import { createRoom, getRoom } from "$lib/server/game/rooms.server";
 import type { Actions } from "./$types";
 
@@ -15,7 +14,7 @@ export const actions = {
     }
 
     const room = createRoom();
-    const token = room.getToken(room.adminId);
+    const token = room.adminToken
     if(!token) return fail(500, "Failed to create admin token");
 
     cookies.set(`room_${room.code}`, token, { path: "/", httpOnly: true, sameSite: "strict", secure: !dev });
@@ -37,10 +36,8 @@ export const actions = {
     }
 
     const {clientId, client} = room.findClient(cookies.get(`room_${room.code}`)) ?? room.addClient(username);
-    const token = room.getToken(clientId);
-    if(!token) return fail(500, "No token corresponding to client ID.");
     
-    cookies.set(`room_${room.code}`, token, { path: "/", httpOnly: true, sameSite: "strict", secure: !dev });
+    cookies.set(`room_${room.code}`, client.token, { path: "/", httpOnly: true, sameSite: "strict", secure: !dev });
     redirect(303, resolve("/lobby/online/[code]", { code: room.code }));
   }
 } satisfies Actions;

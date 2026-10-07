@@ -30,6 +30,8 @@ export type MatchRules =
   | { kind: 'time'; minutes: number }
   | { kind: 'goals'; target: number };
 
+export const DEFAULT_MATCH_RULES: MatchRules = { kind: "time", minutes: 5 }
+
 // Match flow for the browser game only; agents act only during play.
 export type Phase =
   | { kind: 'play' }

@@ -1,5 +1,4 @@
 import { customAlphabet } from 'nanoid';
-import type { MatchRules } from '$lib/engine/types';
 import { Room } from './room.server';
 import { WebSocket } from 'ws';
 

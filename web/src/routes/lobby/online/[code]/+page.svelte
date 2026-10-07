@@ -1,19 +1,45 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import type { PageProps } from './$types';
   import { NetworkSource } from '$lib/client/network-source';
   import Match from '../../../../components/Match.svelte';
-  import type { LobbyState } from '$lib/shared/protocol';
+  import type { LobbyPlayer } from '$lib/shared/protocol';
+  import PlayerCardList from './PlayerCardList.svelte';
 
   let { params, data }: PageProps = $props();
-  let source = $state.raw<NetworkSource>();
+
+  function deletePlayer(playerId: string){
+    source
+  }
+
+  const spectators = $derived(data.lobbyState.spectators);
+  // const players = $derived(data.lobbyState.players); // hardcoded values for now
+  const players: Record<string, LobbyPlayer> = $state({
+    a: {username: "Player 1", team: "blue"},
+    b: {username: "Player 2", team: "blue"},
+    c: {username: "Player 3", team: "blue"},
+
+    d: {username: "Player 4", team: "orange"},
+    e: {username: "Player 5", team: "orange"},
+  })
+  const bluePlayers = $derived(Object.fromEntries(Object.entries(players).filter(([_, p])=>p.team === "blue")));
+  const orangePlayers = $derived(Object.fromEntries(Object.entries(players).filter(([_, p])=>p.team === "orange")));
+
+  const source = untrack(() => new NetworkSource(
+    params.code,
+    data.client.token, 
+    data.lobbyState,
+    message => {
+      if (message.type === 'lobby') ({started: playing, lobbyState: data.lobbyState, controlledPlayerIds: data.client.playerIDs} = message); 
+      else if (message.type === 'snapshot') playing = true;
+    }, 
+    value => status = value
+  ));
 
   let playing = $state(false);
-  let controlledPlayerIds = $state<string[]>([]);
   let status: string = $state('Connecting');
 
   let codeCopied = $state(false);
-
   async function copyCode(){
     await navigator.clipboard.writeText(params.code);
     codeCopied = true;
@@ -21,20 +47,8 @@
   }
 
   onMount(() => {
-    const network = new NetworkSource(
-      params.code,
-      data.client.token, 
-      data.lobbyState,
-      message => {
-        if (message.type === 'lobby') ({start: playing, lobbyState: data.lobbyState, controlledPlayerIds} = message); 
-        else if (message.type === 'snapshot') playing = true;
-      }, 
-      value => status = value
-    );
-
-    source = network;
-    network.start();
-    return () => network.stop();
+    source.start();
+    return () => source.stop();
   });
 </script>
 
@@ -49,20 +63,17 @@
     </div>
     <div id="body">
       <div class="menuCard" id="blueTeamContainer">
-        <h2 class="cardHeading">
-          <div class="circle" style="background-color: var(--blue);">
-          </div>Blue</h2>
+        <h2 class="cardHeading">Blue</h2>
+        <PlayerCardList controlledPlayers={data.client.playerIDs} players={bluePlayers}></PlayerCardList>
       </div>
       <div class="menuCard" id="orangeTeamContainer">
-        <div id="cardHeading"></div>
-        <h2 class="cardHeading">
-          <div class="circle" style="background-color: var(--orange);">
-          </div>Orange</h2>
+        <h2 class="cardHeading">Orange</h2>
+        <PlayerCardList controlledPlayers={data.client.playerIDs} players={orangePlayers}></PlayerCardList>
       </div>
       <div class="menuCard" id="spectatorContainer">
-        <h2>Spectators</h2>
-        {#each Object.entries(data.lobbyState.spectators) as [spectatorId, spectatorUsername]}
-          <p>{spectatorUsername}{spectatorId === data.clientId ? " (you)" : ""}</p>
+        <h2 class="cardHeading">Spectators</h2>
+        {#each Object.entries(spectators) as [spectatorId, spectatorUsername]}
+          <span>{spectatorUsername}{spectatorId === data.clientId ? " (you)" : ""}</span>
         {/each}
       </div>
       <button id="startButton" onclick={() => source?.startMatch()}>Start game</button>
@@ -90,35 +101,33 @@
     justify-content: space-between;
     align-items: center;
     border-bottom: 2px solid var(--white);
+    font-size: 1.5em;
   }
   #body{
     flex: 1;
+    position: relative;
     min-height: 0;
     display: grid;
     grid-template-columns: 1.5fr 1.5fr 1fr;
     grid-template-rows: 3fr 3fr 1fr;
-    gap: var(--border-width)
+    gap: 8px
   }
   #blueTeamContainer{ grid-area: 1/1/4/2; }
   #orangeTeamContainer{ grid-area: 1/2/4/3; }
   #spectatorContainer{ grid-area: 1/3/2/4; }
   #startButton{ grid-area: 3/3/4/4; }
-
+  
   .cardHeading{
+    margin: 8px 0px;
+    font-size: 2em;
+  }
+  .menuCard{
     display: flex;
-    align-items: center;
-    gap: 0.4em;
+    flex-direction: column;
   }
-  .circle{
-    display: inline-block;
-    height: 1lh;
-    aspect-ratio: 1;
-    border-radius: 50%;
-  }
-
 
   #roomName{
-    margin: 8px;
+    margin: 8px 0px;
   }
   .connection { 
     position: fixed; 

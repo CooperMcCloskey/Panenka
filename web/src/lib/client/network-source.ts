@@ -4,7 +4,7 @@ import { createState } from '$lib/engine/state';
 import type { Body, GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
 import type { KeyboardController } from '$lib/shared/controller';
-import type { ClientMessage, LobbyPlayers, LobbyState, ServerMessage } from '$lib/shared/protocol';
+import type { ClientMessage, LobbyPlayer, LobbyPlayers, LobbyState, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
 
 const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
@@ -79,7 +79,7 @@ export class NetworkSource implements StateSource {
     if(message.lobbyState.rev <= this.lobbyRev || this.started) return;
     this.lobbyState = message.lobbyState
     this.controlledPlayers = message.controlledPlayerIds;
-    this.started = message.start;
+    this.started = message.started;
   }
   private onSnapshotMessage(message: ServerMessage & {type: "snapshot"}){
     const next = decodeState(
@@ -101,6 +101,17 @@ export class NetworkSource implements StateSource {
     this.send({ type: 'input', seq: this.seq++, actions });
   }
   startMatch() { this.send({ type: 'start', lobbyState: this.lobbyState }); }
+  
+  addPlayer(player: LobbyPlayer, clientId) {
+    let lobbyState = this.lobbyState;
+    const playerId = 
+    lobbyState.players[]
+  }
+  deletePlayer(playerId: string) {
+    let lobbyState = this.lobbyState;
+    delete lobbyState.players[playerId]
+    this.send({ type: 'setLobby', lobbyState})
+  }
 
   getTeamSizes(): TeamSizes{
     let blue = 0;
