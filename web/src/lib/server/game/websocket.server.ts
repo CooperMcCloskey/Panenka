@@ -1,5 +1,5 @@
 import WebSocket, { WebSocketServer } from 'ws';
-import { getRoom, cancelPlayerRemoval, removeClient, schedulePlayerRemoval,
+import { getRoom, cancelClientRemoval, removeClient, scheduleClientRemoval,
   deleteRoomIfEmpty, HEARTBEAT_MS, MAX_MISSED_PINGS } from './rooms.server';
 import type { Room } from './room.server';
 import { isLegalInputMessage, type ClientMessage } from '$lib/shared/protocol';
@@ -14,6 +14,7 @@ export function startWebSocketServer(): WebSocketServer {
   return wss;
 }
 
+// addClient is called in /online/+page.server.ts dont know if needs to be called anywhere else
 function connectSocket(socket: WebSocket): void {
   let room: Room | undefined;
   let token = '';
@@ -46,7 +47,7 @@ function connectSocket(socket: WebSocket): void {
     client = target?.connect(message.token, socket);
     if (!client) { socket.close(1008, 'Invalid room session'); return; }
     room = target!; token = message.token;
-    cancelPlayerRemoval(room, token);
+    cancelClientRemoval(room, token);
     clearTimeout(joinTimeout);
     ping();
     // TODO FIX START MATCH 
@@ -76,8 +77,11 @@ function connectSocket(socket: WebSocket): void {
         else socket.close(1008, 'Illegal inputs');
         return;
       }
-      else if (message.type === 'start') room.startMatch(message.lobbyState, token, socket);
-      else if (message.type === 'addPlayer' ) room.addPlayer(token, message.player, message.rev)
+      else if (message.type === 'start') room.startMatch(message.lobbyState, token);
+      else if (message.type === 'addPlayer' ) room.addPlayer(token, message.player, message.rev);
+      else if (message.type === 'removePlayer') room.removePlayer(token, message.playerId, message.rev);
+      else if (message.type === 'switchTeam') room.switchPlayerTeam(token, message.playerId, message.rev);
+      else if (message.type === 'setRules') room.setRules(token, message.newRules, message.rev);
       socket.close(1008, 'Invalid message');
     } catch { socket.close(1008, 'Invalid Message'); }
   });
@@ -88,7 +92,7 @@ function connectSocket(socket: WebSocket): void {
     
     if (room && client?.socket === socket) {
       room.disconnect(socket);
-      schedulePlayerRemoval(room, token);
+      scheduleClientRemoval(room, token);
       deleteRoomIfEmpty(room);
     }
   });

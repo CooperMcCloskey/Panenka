@@ -1,7 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { dev } from "$app/environment";
 import { resolve } from "$app/paths";
-import { createRoom, getRoom } from "$lib/server/game/rooms.server";
+import { createRoom, getRoom } from "$lib/server/game/roomManager.server";
 import type { Actions } from "./$types";
 
 export const actions = {
@@ -13,7 +13,7 @@ export const actions = {
       return fail(400, { message: "Invalid username."});
     }
 
-    const room = createRoom();
+    const room = createRoom(username);
     const token = room.adminToken
     if(!token) return fail(500, "Failed to create admin token");
 

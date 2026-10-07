@@ -29,6 +29,9 @@ export type ClientMessage =
   | { type: 'start' , lobbyState: LobbyState }
   | { type: 'input', action: ClientAction}
   | { type: 'addPlayer', player: LobbyPlayer, rev: number }
+  | { type: 'removePlayer', playerId: string, rev: number }
+  | { type: 'switchTeam', playerId: string, rev: number }
+  | { type: 'setRules', newRules: MatchRules , rev: number }
 
 export type ServerMessage =
   | {
