@@ -17,7 +17,7 @@ def observe(state, i, blue_agent_num, agent_num, game_length):
 
     player_features = jnp.concatenate([get_player_features(world, i, j, is_blue) for j in sorted_indices])
     ball_features = get_ball_features(world, i, is_blue)
-    time_elapsed = jnp.array([state.step/game_length])
+    time_elapsed = jnp.array([state.tick/game_length])
 
     return jnp.concatenate([player_features, ball_features, time_elapsed])
         

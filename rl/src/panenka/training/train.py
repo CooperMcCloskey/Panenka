@@ -10,7 +10,7 @@ from panenka.algorithms.random_algorithm import RandomAlgorithm
 from panenka.algorithms.algorithm import Transition
 from panenka.env import PanenkaEnv
 
-env = PanenkaEnv(blue_agent_num=1, orange_agent_num=1, game_length=1800)
+env = PanenkaEnv(blue_agent_num=1, orange_agent_num=1, game_length=1800) # game_length in ticks: 1800 = 30 s
 
 algorithms = {"random": RandomAlgorithm()}
 
@@ -19,10 +19,10 @@ mapping = { # agent name -> algorithm name
     "orange_0": "random"
 }
 
-initial_key = jax.random.key(0)
+key = jax.random.key(0)
 learners = {}
 for name, algo in algorithms.items():
-    key, init_key = jax.random.split(initial_key)
+    key, init_key = jax.random.split(key) # split key itself, so every algorithm gets a different init_key
     learners[name] = algo.init(init_key, env.observation_size)
 
 key, reset_key = jax.random.split(key)

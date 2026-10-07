@@ -5,7 +5,7 @@ import { TICK_MS, MAX_FRAME_MS, SNAPSHOT_NUM } from '$lib/engine/constants';
 import { step } from '$lib/engine/step';
 import { DEFAULT_MATCH_RULES, type Action, type GameState, type MatchRules } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
-import type { ClientAction, LobbyState, ServerMessage } from '$lib/shared/protocol';
+import { NEW_LOBBY_STATE, type ClientAction, type LobbyState, type ServerMessage } from '$lib/shared/protocol';
 import type { Client, LobbyPlayer } from "$lib/shared/protocol";
 import { createState } from '$lib/engine/state'
 import { GAME_END_DELAY } from './constants';
@@ -25,7 +25,7 @@ export class Room {
   readonly adminToken: string;
   // Client ID mapped to client
   readonly clients: Record<string, Client> = {};
-  lobbyState: LobbyState = {rev: 0, rules: DEFAULT_MATCH_RULES, players: {}, started: false};
+  lobbyState: LobbyState = NEW_LOBBY_STATE;
   state: GameState = createState({blue: 0, orange: 0}, this.lobbyState.rules);
 
   private timer?: ReturnType<typeof setInterval>;
@@ -76,6 +76,7 @@ export class Room {
   get players() { return this.lobbyState.players }
   get rules() { return this.lobbyState.rules }
   get started() { return this.lobbyState.started }
+  get playerMapping() { return this.lobbyState.playerMapping }
   get usernames() { return Object.values(this.players).map( p => p.username); }
   // Ids mapped to usernames
   get spectators(): Record<string, string> { 
@@ -244,9 +245,10 @@ export class Room {
     client.playerIDs.push(playerID);
 
     this.players[playerID] = player;
-    this.broadcastLobby();
-    // Initialising player input state
     this.playerActions[playerID] = IDLE;
+    if(player.team === "blue") this.lobbyState.playerMapping.
+    
+
 
     this.broadcastLobby();
     return {type: "ok"};

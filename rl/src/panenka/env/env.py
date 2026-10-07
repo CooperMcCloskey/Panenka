@@ -30,7 +30,7 @@ from flax import struct
 # orange actions are then flipped back using the mirror_action function
 #
 # reward: 1 for scoring -1 for conceeding
-# dones: set all agents to done when the max steps has been reached or a goal is scored
+# dones: set all agents to done when a goal is scored or game_length ticks have been played
 
 def agent_name(i, blue_agent_num):
     return f"blue_{i}" if i < blue_agent_num else f"orange_{i - blue_agent_num}"
@@ -38,7 +38,7 @@ def agent_name(i, blue_agent_num):
 @struct.dataclass
 class State:
     world: World
-    step: int
+    tick: int # physics ticks since kickoff (a decision can last several ticks)
 
 class PanenkaEnv(MultiAgentEnv):
 
@@ -46,7 +46,7 @@ class PanenkaEnv(MultiAgentEnv):
         self.blue_agent_num = blue_agent_num
         self.orange_agent_num = orange_agent_num
         self.agent_num = blue_agent_num + orange_agent_num
-        self.max_steps = game_length
+        self.max_ticks = game_length # in ticks, so an episode lasts the same game time whatever the action ticks are
 
         super().__init__(self.agent_num)
         self.agents = [agent_name(i, self.blue_agent_num) for i in range(self.agent_num)]
@@ -57,13 +57,13 @@ class PanenkaEnv(MultiAgentEnv):
 
 
     def reset(self, key): # key is unused because the game is deterministic
-        state = State(world=kickoff_world(self.blue_agent_num, self.orange_agent_num), step=0)
+        state = State(world=kickoff_world(self.blue_agent_num, self.orange_agent_num), tick=0)
         return self.get_obs(state), state
 
     def get_obs(self, state):
         observation = {}
         for i in range(self.agent_num):
-            observation[agent_name(i, self.blue_agent_num)] = observe(state, i, self.blue_agent_num, self.agent_num, self.max_steps)
+            observation[agent_name(i, self.blue_agent_num)] = observe(state, i, self.blue_agent_num, self.agent_num, self.max_ticks)
         return observation
 
     # JaxMARL's step can't pass ticks through to step_env, so this replaces it (same auto-reset).
@@ -83,14 +83,21 @@ class PanenkaEnv(MultiAgentEnv):
         # hold the actions for ticks, rounded up or down at random so it averages out exactly (6.3 -> 6 or 7)
         base = jnp.floor(ticks)
         held_ticks = (base + (jax.random.uniform(key) < ticks - base)).astype(jnp.int32)
-        world = jax.lax.fori_loop(0, held_ticks, lambda _, w: physics_step(w, player_actions), state.world)
-        new_state = State(world=world, step=state.step + 1)
+
+        # goals are checked every tick, like the web game, and the first one counts even if the ball bounces back out
+        def tick(_, carry):
+            world, goal = carry
+            world = physics_step(world, player_actions)
+            goal = jnp.where(goal == 0, goal_scored_by(world.ball_pos), goal) # 1 if blue scored, 0 if nobody scored, -1 if orange scored
+            return world, goal
+        world, goal = jax.lax.fori_loop(0, held_ticks, tick, (state.world, jnp.int32(0)))
+
+        new_state = State(world=world, tick=state.tick + held_ticks)
         obs = self.get_obs(new_state)
 
-        goal = goal_scored_by(world.ball_pos) # 1 if blue scored, 0 if nobody scored, -1 if orange scored
         rewards = {a: goal * (1.0 if a.startswith("blue") else -1.0) for a in self.agents} # flip the score for orange players so they get a positive reward when they score
 
-        done = (goal != 0) | (new_state.step >= self.max_steps) # done = true when a goal is scored or max steps is reached
+        done = (goal != 0) | (new_state.tick >= self.max_ticks) # done = true when a goal is scored or the time limit is reached
         dones = {a: done for a in self.agents} | {"__all__": done} # apply done to all agents so they all stop together
 
         return obs, new_state, rewards, dones, {"ticks": held_ticks} # ticks actually played, for per-tick discounting

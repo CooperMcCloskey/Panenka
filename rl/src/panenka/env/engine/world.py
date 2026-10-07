@@ -22,10 +22,11 @@ class World(NamedTuple):
 
 
 def kickoff_world(blue: int, orange: int) -> World:
-    """`blue` players on the left, then `orange` on the right. Each team lines up vertically, centered."""
+    """`blue` players on the left, then `orange` on the right. Each team lines up vertically, centered,
+    with its first player lowest (largest y)."""
 
     def line(size: int, x: float) -> list[list[float]]:
-        return [[x, CENTER_Y + (k - (size - 1) / 2) * KICKOFF_SPACING] for k in range(size)]
+        return [[x, CENTER_Y + ((size - 1) / 2 - k) * KICKOFF_SPACING] for k in range(size)]
 
     n = blue + orange
     return World(

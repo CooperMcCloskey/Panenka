@@ -1,4 +1,4 @@
-import type { MatchRules, Team, Action } from '$lib/engine/types';
+import { type MatchRules, type Team, type Action, DEFAULT_MATCH_RULES } from '$lib/engine/types';
 import { WebSocket } from "ws";
 
 export type LobbyPlayer = {username: string, team: Team}
@@ -21,8 +21,17 @@ export type LobbyState = {
   rev: number,
   rules: MatchRules,  
   players: LobbyPlayers,
-  started: boolean
+  playerMapping: string[],
+  started: boolean,
 }
+
+export const NEW_LOBBY_STATE: LobbyState = {
+  rev: 0, 
+  rules: DEFAULT_MATCH_RULES, 
+  players: {}, 
+  playerMapping: [],
+  started: false
+};
 
 export type ClientMessage =
   | { type: 'join', code: string, token: string }
