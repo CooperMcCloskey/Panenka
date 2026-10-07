@@ -51,12 +51,18 @@ export type ServerMessage =
   | { type: 'snapshot', state: number[] }
   | { type: 'error', message: string }
 
-export function isLegalInputMessage(value: unknown): value is Extract<ClientMessage, { type: 'input' }> {
-  if (!value || typeof value !== 'object') return false;
-  const m = value as Record<string, unknown>;
-  const a = m.action as PlayerAction | undefined;
-  return m.type === 'input' && Number.isSafeInteger(m.seq) && (m.seq as number) >= 0
-    && !!a && [-1, 0, 1].includes(a.moveX) && [-1, 0, 1].includes(a.moveY)
-    && typeof a.kick === 'boolean';
-}
+export function isLegalInputMessage(value: unknown): boolean {
+  const isObject = (v: unknown): v is Record<string, unknown> =>
+    v !== null && typeof v === 'object' && !Array.isArray(v);
 
+  if (!isObject(value) || value.type !== 'input') return false;
+  const input = value.action;
+  if (!isObject(input) || !isObject(input.actions)) return false;
+
+  return Object.values(input.actions).every(a =>
+    isObject(a)
+    && [-1, 0, 1].includes(a.moveX as number)
+    && [-1, 0, 1].includes(a.moveY as number)
+    && typeof a.kick === 'boolean'
+  );
+}
