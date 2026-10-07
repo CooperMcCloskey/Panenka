@@ -15,14 +15,13 @@ export type LobbyPlayers = Record<string, LobbyPlayer>
 export type ClientAction = {
   actions: Record<string, Action>,
   queue: Record<string, Action[]>, 
-  seq: number, //the number of actions sent (used to drop old updates)
-  recieved: number, //ms since last message arrived
 }
 
 export type LobbyState = {
   rev: number,
   rules: MatchRules,  
   players: LobbyPlayers,
+  started: boolean
 }
 
 export type ClientMessage =
@@ -36,7 +35,6 @@ export type ServerMessage =
       type: 'lobby';
       lobbyState: LobbyState;
       controlledPlayerIds: string[]; // the player IDs this client controls
-      started: boolean;
     }
   | { type: 'snapshot', state: number[] }
   | { type: 'error', message: string }
