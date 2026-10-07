@@ -232,7 +232,7 @@ export class Room {
   }
 
   // Remove player without ending the game, useful for when reverting back to spectator
-  removePlayer(playerId: string) {
+  removePlayer(token: string, playerId: string, rev: number) {
     const player = this.players[playerId];
     if (!player) return;
     const client = Object.values(this.clients).find(c => c.playerIDs.includes(playerId));

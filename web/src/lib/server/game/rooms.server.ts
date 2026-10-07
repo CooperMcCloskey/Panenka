@@ -6,7 +6,7 @@ export const HEARTBEAT_MS = 15_000;
 export const MAX_MISSED_PINGS = 2;
 const removalTimers = new WeakMap<Room, Map<string, ReturnType<typeof setTimeout>>>();
 
-export function cancelPlayerRemoval(room: Room, token: string) {
+export function cancelClientRemoval(room: Room, token: string) {
   const timers = removalTimers.get(room);
   clearTimeout(timers?.get(token));
   timers?.delete(token);
@@ -17,15 +17,15 @@ export function removeClient(room: Room, token: string, socket?: WebSocket) {
   // An old connection must never remove a player who has reconnected elsewhere.
   if (!player || (socket ? player.socket !== socket : !!player.socket)) return false;
   // Rename function to cancelClientRemoval
-  cancelPlayerRemoval(room, token);
+  cancelClientRemoval(room, token);
   room.removeClient(token);
   socket?.terminate();
   deleteRoomIfEmpty(room);
   return true;
 }
 
-export function schedulePlayerRemoval(room: Room, token: string) {
-  cancelPlayerRemoval(room, token);
+export function scheduleClientRemoval(room: Room, token: string) {
+  cancelClientRemoval(room, token);
   let timers = removalTimers.get(room);
   if (!timers) { timers = new Map(); removalTimers.set(room, timers); }
   timers.set(token, setTimeout(() => removeClient(room, token), HEARTBEAT_MS * MAX_MISSED_PINGS));
