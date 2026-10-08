@@ -10,8 +10,7 @@ import type { Client, ClientId, LobbyPlayer, PublicClient } from "$lib/shared/pr
 import { createState } from '$lib/engine/state'
 import { MAX_TEAMSIZE } from '$lib/engine/rules';
 import { isValidRules, isValidUsername, MAX_LOCAL_PLAYERS } from '$lib/shared/limits';
-import { GAME_END_DELAY, MAX_SNAPSHOT_BACKLOG_BYTES } from './constants';
-import { InputBuffer } from './input-buffer';
+import { GAME_END_DELAY } from './constants';
 
 type Result = 
   | {type: "ok", message?: string} 
@@ -38,7 +37,6 @@ export class Room {
 
   //maps playerId to playerAction
   private readonly playerActions: Record<string, Action> = {};
-  private readonly inputBuffers: Record<ClientId, InputBuffer> = {};
 
   constructor(readonly code: string, adminUsername: string) {
     const {clientId: adminId, client: adminClient} = this.addClient(adminUsername);
@@ -57,13 +55,7 @@ export class Room {
     this.accumulator += Math.min(now - this.last, MAX_FRAME_MS);
     this.last = now;
 
-    let snapshotDue = false;
     while (this.accumulator >= TICK_MS) {
-      for (const [clientId, client] of Object.entries(this.clients)) {
-        const input = this.inputBuffers[clientId]?.consume();
-        if (input) for (const id of client.controlledPlayers)
-          this.playerActions[id] = input.actions[id] ?? IDLE;
-      }
       const actions = this.playerMapping.map((id)=>this.playerActions[id])
       this.state = step(this.state, actions);
       this.accumulator -= TICK_MS;
@@ -72,11 +64,10 @@ export class Room {
       if (this.state.match.winner !== null && !this.endTimer) {
         this.endTimer = setTimeout(() => this.returnToLobby(), GAME_END_DELAY);
       }
-      if (this.state.match.tick % SNAPSHOT_NUM === 0) snapshotDue = true;
+      if (this.state.match.tick % SNAPSHOT_NUM === 0) {
+        this.broadcastSnapshot();
+      }
     }
-    // After an event-loop stall, send the current state once instead of a burst
-    // of intermediate states that would already be stale when they arrive.
-    if (snapshotDue) this.broadcastSnapshot();
   }
 
   // -----------------------------------------------------------------------------
@@ -140,13 +131,8 @@ export class Room {
     }
   };
   private broadcastSnapshot() {
-    const state = Array.from(encodeState(this.state));
-    for (const [clientId, client] of Object.entries(this.clients)) {
-      if (client.socket && client.socket.bufferedAmount <= MAX_SNAPSHOT_BACKLOG_BYTES) this.send(client.socket, {
-        type: 'snapshot', state,
-        acknowledgedSequence: this.inputBuffers[clientId]?.acknowledgedSequence ?? 0,
-      });
-    }
+    const message: ServerMessage = { type: 'snapshot', state: Array.from(encodeState(this.state)) };
+    Object.values(this.clients).forEach(c => { if (c.socket) this.send(c.socket, message); });
   }
 
   // -----------------------------------------------------------------------------
@@ -159,13 +145,10 @@ export class Room {
     const {clientId, client} = found;
     client.socket?.close(1000, 'Reconnected elsewhere');
     client.socket = socket;
-    this.inputBuffers[clientId] = new InputBuffer();
 
     this.broadcastLobby();
 
-    if (this.started && this.state) this.send(socket, {
-      type: 'snapshot', state: Array.from(encodeState(this.state)), acknowledgedSequence: 0,
-    });
+    if (this.started && this.state) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)) });
 
     if (this.state && this.started && !this.state.match.winner && !this.timer) {
       this.last = performance.now();
@@ -178,8 +161,6 @@ export class Room {
     const c = Object.values(this.clients).find(c => c.socket === socket);
     if (!c) return;
     c.socket = undefined; 
-    const clientId = Object.keys(this.clients).find(id => this.clients[id] === c)!;
-    this.inputBuffers[clientId] = new InputBuffer();
 
     // Loop for each player in a client
     for (let i = 0; i < c.controlledPlayers.length; i++){
@@ -202,7 +183,6 @@ export class Room {
     const client: Client = { token: nanoid(32), controlledPlayers: [], username};
     const clientId = Uuid();
     this.clients[clientId] = client;
-    this.inputBuffers[clientId] = new InputBuffer();
     this.broadcastLobby();
     return {clientId, client};
   }
@@ -213,7 +193,6 @@ export class Room {
 
     for (const playerId of client.controlledPlayers) delete this.players[playerId];
     delete this.clients[clientId];
-    delete this.inputBuffers[clientId];
     this.broadcastLobby()
     return {type: "ok"}
   }
@@ -231,7 +210,6 @@ export class Room {
     if(!playingClients.every(c => c.socket?.readyState === WebSocket.OPEN)) return {type: "fail", message: "Not all players connected"}; //TODO: show this on the frontend
 
     this.lobbyState = lobbyState;
-    this.resetInputs();
     this.state = createState(this.teamSizes, this.rules);
     this.last = performance.now();
     this.accumulator = 0;
@@ -243,15 +221,15 @@ export class Room {
     return {type: "ok"};
   }
 
-  input(token: string, actions: ClientAction, sequence: number): Result {
+  input(token: string, actions: ClientAction): Result {
     const found = this.findClient(token);
     if (!found) return {type: "error", message: "Invalid token"}
     const {clientId, client} = found
 
     for (const [playerID, action] of Object.entries(actions)) {
       if (!client.controlledPlayers.includes(playerID)) return {type: "fail", message: "Sent an action for a player the client doesn't control."};
+      this.playerActions[playerID] = action;
     }
-    if (this.started) this.inputBuffers[clientId].push({ sequence, actions });
     return {type: "ok"}
   }
   // Add player
@@ -318,14 +296,8 @@ export class Room {
   // Stops the match (tick loop and any pending end-of-match timer) and sends everyone to the lobby
   private returnToLobby() {
     this.cleanup();
-    this.resetInputs();
     this.lobbyState.started = false;
     this.broadcastLobby();
-  }
-
-  private resetInputs() {
-    for (const clientId of Object.keys(this.clients)) this.inputBuffers[clientId] = new InputBuffer();
-    for (const id of Object.keys(this.playerActions)) this.playerActions[id] = IDLE;
   }
 
   // No rev check: only the admin changes rules, so their latest message should win

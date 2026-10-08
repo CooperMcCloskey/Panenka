@@ -1,42 +1,34 @@
 import { IDLE } from '$lib/engine/actions';
-import { MAX_FRAME_MS, TICK_MS } from '$lib/engine/constants';
+import { SNAPSHOT_NUM, TICK_MS } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
-import type { GameState, MatchRules, TeamSizes } from '$lib/engine/types';
+import type { Body, GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
 import { KeyboardController } from '$lib/shared/controller';
 import { loadControls } from '$lib/client/bindings';
 import type { ClientMessage, LobbyPlayer, LobbyState, PlayerId, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
-import { NETCODE_SETTINGS, type NetcodeSettings } from '$lib/shared/netcode';
-import { SnapshotBuffer } from './snapshot-buffer';
-import { LocalPrediction } from './local-prediction';
+
+const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
 
 export class NetworkSource implements StateSource {
   private controllers: Record<PlayerId, KeyboardController> = {} 
   private socket?: WebSocket;
 
   private state?: GameState;
-  private snapshots: SnapshotBuffer;
-  private prediction: LocalPrediction;
-  private settings: NetcodeSettings;
+  private previous?: GameState;
 
   private controlledPlayers: PlayerId[] = []
 
-  private inputAccumulator = 0;
-  private sequence = 0;
+  private age = SNAPSHOT_MS;
+  private sendInputTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     private code: string, 
     private token: string, 
     private lobbyState: LobbyState,
     private onMessageCallback: (message: ServerMessage) => void,
-    private onStatus: (status: string) => void,
-    options: Partial<NetcodeSettings> = {},
-  ) {
-    this.settings = { ...NETCODE_SETTINGS, ...options };
-    this.snapshots = new SnapshotBuffer(this.settings);
-    this.prediction = new LocalPrediction(this.settings);
-  }
+    private onStatus: (status: string) => void
+  ){}
   
   start() {
     Object.values(this.controllers).forEach(c => c.attach());
@@ -62,15 +54,16 @@ export class NetworkSource implements StateSource {
     };
     socket.onerror = () => this.onStatus('Connection failed');
 
-    window.addEventListener('blur', this.releaseInput);
+    this.sendInputTimer = setInterval(() => { if(this.lobbyState.started) this.sendInput() }, TICK_MS);
   }
   stop() {
     Object.values(this.controllers).forEach(c => c.detach());
-    window.removeEventListener('blur', this.releaseInput);
-    this.releaseInput();
+    clearInterval(this.sendInputTimer)
+
+    const idleActions = Object.fromEntries(this.controlledPlayers.map((playerId)=>[playerId, IDLE]))
+    this.send({ type: 'input', actions: idleActions});
     const socket = this.socket; this.socket = undefined;
     if (socket) { socket.onclose = null; socket.close(); }
-    this.clearSmoothing();
   }
 
   private onMessage(message: ServerMessage){
@@ -81,12 +74,11 @@ export class NetworkSource implements StateSource {
     else throw new Error("Unknown error type");
   }
   private onLobbyMessage(message: ServerMessage & {type: "lobby"}){
-    if(message.lobbyState.rev < this.lobbyState.rev) return;
+    if(message.lobbyState.rev <= this.lobbyState.rev) return;
     this.lobbyState = message.lobbyState
     this.setControlledPlayers(message.controlledPlayerIds);
     // Back in the lobby: forget the old match so the next one doesn't blend from its last frame
-    this.prediction.setPlayers(this.lobbyState.playerMapping, this.controlledPlayers);
-    if (!this.lobbyState.started) this.clearSmoothing();
+    if (!this.lobbyState.started) this.state = this.previous = undefined;
   }
   private setControlledPlayers(playerIds: PlayerId[]) {
     if (playerIds.join() === this.controlledPlayers.join()) return; // keeps held keys on unrelated lobby updates
@@ -108,41 +100,20 @@ export class NetworkSource implements StateSource {
     const next = decodeState(
       new Float64Array(message.state), 
     );
-    if (this.state && next.match.tick <= this.state.match.tick) return;
-    this.snapshots.push(next, performance.now());
-    this.prediction.reconcile(next, message.acknowledgedSequence, this.inputAccumulator / TICK_MS);
-    this.state = next;
-    this.lobbyState.started = true;
+    this.previous = this.lobbyState.started ? this.state : next;
+    this.state = next; this.age = 0; this.lobbyState.started = true;
   }
   private onErrorMessage(message: ServerMessage & {type: "error"}){
     //TODO
   }
 
   private send(message: ClientMessage) {
-    if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 8192) {
+    if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 8192)
       this.socket.send(JSON.stringify(message));
-      return true;
-    }
-    return false;
   }
   private sendInput() {
-    if (Object.keys(this.controllers).length === 0) return;
     const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction()])))
-    const input = { sequence: ++this.sequence, actions };
-    if (this.send({ type: 'input', ...input })) this.prediction.predict(input);
-  }
-  private releaseInput = () => {
-    if (!this.lobbyState.started || this.controlledPlayers.length === 0) return;
-    const actions = Object.fromEntries(this.controlledPlayers.map(id => [id, IDLE]));
-    const input = { sequence: ++this.sequence, actions };
-    if (this.send({ type: 'input', ...input })) this.prediction.predict(input);
-  };
-
-  private clearSmoothing() {
-    this.state = undefined;
-    this.snapshots.clear();
-    this.prediction.clear();
-    this.inputAccumulator = 0;
+    this.send({ type: 'input', actions });
   }
   startMatch() { this.send({ 
     type: 'start', 
@@ -178,25 +149,20 @@ export class NetworkSource implements StateSource {
     return {blue, orange}
   }
 
-  update(dtMs: number) {
-    this.prediction.update(Math.max(0, dtMs));
-    if (!this.state || !this.lobbyState.started || this.socket?.readyState !== WebSocket.OPEN) return;
-    // Input collection, sending and prediction use the same fixed tick. Avoid a
-    // burst of old inputs after returning to a backgrounded tab.
-    this.inputAccumulator += dtMs > MAX_FRAME_MS ? 0 : Math.max(0, dtMs);
-    while (this.inputAccumulator >= TICK_MS) {
-      this.sendInput();
-      this.inputAccumulator -= TICK_MS;
-    }
-  }
+  update(dtMs: number) { this.age += dtMs; }
   currentState(): GameState {
-    const remote = this.snapshots.sample(performance.now());
-    if (!remote) return createState(this.getTeamSizes(), this.lobbyState.rules);
-    if (!this.settings.prediction) return remote;
-    const predicted = this.prediction.currentPlayers(this.inputAccumulator / TICK_MS);
-    if (!predicted) return remote;
-    return { ...remote, world: { ...remote.world, players: remote.world.players.map((player, i) =>
-      this.controlledPlayers.includes(this.lobbyState.playerMapping[i]) ? predicted[i] ?? player : player,
-    ) } };
+    const {state, previous} = this;
+    if(!state) return createState(this.getTeamSizes(), this.lobbyState.rules)
+    if(!previous) return state;
+
+    const t = Math.min(this.age / SNAPSHOT_MS, 1);
+    const blend = <T extends Body>(a: T, b: T): T => ({ ...b, pos: a.pos.lerp(b.pos, t) });
+    return { 
+      ...state, 
+      world: {
+        ball: blend(previous.world.ball, state.world.ball),
+        players: state.world.players.map((p, i) => blend(previous.world.players[i], p)),
+      }
+    };
   }
 }

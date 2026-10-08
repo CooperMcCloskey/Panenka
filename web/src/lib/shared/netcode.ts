@@ -16,9 +16,8 @@ export const NETCODE_SETTINGS = {
   maxQueuedInputs: 8,
 } as const;
 
-export type NetcodeSettings = {
-  [K in keyof typeof NETCODE_SETTINGS]: typeof NETCODE_SETTINGS[K] extends boolean ? boolean : number;
-};
+export type NetcodeSettings = { [K in keyof typeof NETCODE_SETTINGS]: boolean extends typeof NETCODE_SETTINGS[K]
+  ? boolean : typeof NETCODE_SETTINGS[K] extends boolean ? boolean : number };
 
 export function worldWasReset(previous: GameState, next: GameState): boolean {
   return next.match.tick < previous.match.tick

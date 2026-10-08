@@ -20,8 +20,8 @@ export class SnapshotBuffer {
 
   push(state: GameState, nowMs: number) {
     const latest = this.snapshots.at(-1);
-    if (latest && state.match.tick <= latest.match.tick) return;
     if (latest && worldWasReset(latest, state)) this.clear();
+    else if (latest && state.match.tick <= latest.match.tick) return;
 
     this.clockOffset = Math.max(this.clockOffset, state.match.tick - nowMs / TICK_MS);
     if (this.snapshots.length === 0) {
