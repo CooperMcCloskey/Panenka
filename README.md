@@ -35,8 +35,15 @@ a room in one, and join using its code in the other. The match starts when both
 players connect. Each player uses their first saved control scheme (WASD and Space
 by default). Lobby updates and game snapshots use the same socket.
 
-The server simulates at 60 Hz and sends snapshots at 20 Hz. Clients interpolate
-snapshots; there is no local prediction. Reload to reconnect using the room cookie.
+The server simulates at 60 Hz and sends snapshots at 30 Hz. Clients buffer about
+67 ms of snapshots and interpolate positions on a continuous playback timeline,
+absorbing modest variation in arrival times. There is no client-side prediction
+or extrapolation. Long gaps hold the latest received positions, and kickoffs reset
+the buffer immediately. Scores and match flow use the latest server snapshot.
+Tune display delay and playback settings in
+`web/src/lib/client/snapshot-interpolator.ts` (`INTERPOLATION_SETTINGS`), or pass
+overrides as the optional final argument to `NetworkSource`. A larger buffer
+absorbs more jitter but adds display latency. Reload to reconnect using the room cookie.
 Rooms are in memory and reset when the server restarts; disconnected slots remain
 reserved. Run a single server process. Restart development after changing server
 room code, because the registry survives hot reloads.

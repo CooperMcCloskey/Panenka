@@ -1,25 +1,22 @@
 import { IDLE } from '$lib/engine/actions';
-import { SNAPSHOT_NUM, TICK_MS } from '$lib/engine/constants';
+import { TICK_MS } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
-import type { Body, GameState, MatchRules, TeamSizes } from '$lib/engine/types';
+import type { GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
 import { KeyboardController } from '$lib/shared/controller';
 import { loadControls } from '$lib/client/bindings';
 import type { ClientMessage, LobbyPlayer, LobbyState, PlayerId, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
-
-const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
+import { SnapshotInterpolator, type InterpolationSettings } from './snapshot-interpolator';
 
 export class NetworkSource implements StateSource {
   private controllers: Record<PlayerId, KeyboardController> = {} 
   private socket?: WebSocket;
 
-  private state?: GameState;
-  private previous?: GameState;
+  private snapshots: SnapshotInterpolator;
 
   private controlledPlayers: PlayerId[] = []
 
-  private age = SNAPSHOT_MS;
   private sendInputTimer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -27,8 +24,11 @@ export class NetworkSource implements StateSource {
     private token: string, 
     private lobbyState: LobbyState,
     private onMessageCallback: (message: ServerMessage) => void,
-    private onStatus: (status: string) => void
-  ){}
+    private onStatus: (status: string) => void,
+    interpolation: Partial<InterpolationSettings> = {},
+  ) {
+    this.snapshots = new SnapshotInterpolator(interpolation);
+  }
   
   start() {
     Object.values(this.controllers).forEach(c => c.attach());
@@ -78,7 +78,7 @@ export class NetworkSource implements StateSource {
     this.lobbyState = message.lobbyState
     this.setControlledPlayers(message.controlledPlayerIds);
     // Back in the lobby: forget the old match so the next one doesn't blend from its last frame
-    if (!this.lobbyState.started) this.state = this.previous = undefined;
+    if (!this.lobbyState.started) this.snapshots.clear();
   }
   private setControlledPlayers(playerIds: PlayerId[]) {
     if (playerIds.join() === this.controlledPlayers.join()) return; // keeps held keys on unrelated lobby updates
@@ -100,8 +100,8 @@ export class NetworkSource implements StateSource {
     const next = decodeState(
       new Float64Array(message.state), 
     );
-    this.previous = this.lobbyState.started ? this.state : next;
-    this.state = next; this.age = 0; this.lobbyState.started = true;
+    this.snapshots.push(next, performance.now());
+    this.lobbyState.started = true;
   }
   private onErrorMessage(message: ServerMessage & {type: "error"}){
     //TODO
@@ -149,20 +149,10 @@ export class NetworkSource implements StateSource {
     return {blue, orange}
   }
 
-  update(dtMs: number) { this.age += dtMs; }
+  // Snapshot playback uses the monotonic clock when the current frame is drawn.
+  update(_dtMs: number) {}
   currentState(): GameState {
-    const {state, previous} = this;
-    if(!state) return createState(this.getTeamSizes(), this.lobbyState.rules)
-    if(!previous) return state;
-
-    const t = Math.min(this.age / SNAPSHOT_MS, 1);
-    const blend = <T extends Body>(a: T, b: T): T => ({ ...b, pos: a.pos.lerp(b.pos, t) });
-    return { 
-      ...state, 
-      world: {
-        ball: blend(previous.world.ball, state.world.ball),
-        players: state.world.players.map((p, i) => blend(previous.world.players[i], p)),
-      }
-    };
+    return this.snapshots.sample(performance.now())
+      ?? createState(this.getTeamSizes(), this.lobbyState.rules);
   }
 }
