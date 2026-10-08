@@ -44,7 +44,7 @@ export class NetworkSource implements StateSource {
     if (this.socket) return;
     const url = new URL(window.location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.port = '8080'; url.pathname = '/'; url.search = ''; url.hash = '';
+    url.pathname = '/ws'; url.search = ''; url.hash = ''; // same host and port as the page
     const socket = this.socket = new WebSocket(url);
     this.onStatus('Connecting');
 

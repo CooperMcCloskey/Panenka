@@ -1,15 +1,26 @@
+import type { IncomingMessage } from 'node:http';
+import type { Duplex } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
 import { getRoom, cancelClientRemoval, removeClient, scheduleClientRemoval,
   deleteRoomIfEmpty, HEARTBEAT_MS, MAX_MISSED_PINGS } from './roomManager.server';
 import type { Room } from './room.server';
 import { isLegalInputMessage, type ClientMessage } from '$lib/shared/protocol';
 
-const runtime = globalThis as typeof globalThis & { panenkaSockets?: WebSocketServer };
+type Upgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+const runtime = globalThis as typeof globalThis & { panenkaSockets?: WebSocketServer, panenkaUpgrade?: Upgrade };
+
+// The game socket shares the site's HTTP server and port (hosts like Azure expose only one).
+// That server (Vite in dev, server.js in production) hands upgrade requests for /ws to
+// globalThis.panenkaUpgrade, which is set here.
 export function startWebSocketServer(): WebSocketServer {
   let wss = runtime.panenkaSockets;
+  // A dev process from before this change can still hold the old server on its own port
+  if (wss && !wss.options.noServer) { wss.close(); wss = undefined; }
   if (!wss) {
-    wss = runtime.panenkaSockets = new WebSocketServer({ port: 8080, maxPayload: 2048 });
-    wss.on('error', console.error);
+    const server = wss = runtime.panenkaSockets = new WebSocketServer({ noServer: true, maxPayload: 2048 });
+    server.on('error', console.error);
+    runtime.panenkaUpgrade = (req, socket, head) =>
+      server.handleUpgrade(req, socket, head, (ws) => server.emit('connection', ws, req));
   }
   // The server outlives dev reloads of this file, so swap in the current handler;
   // otherwise edits here only apply after restarting the dev server

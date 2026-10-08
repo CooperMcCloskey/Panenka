@@ -1,5 +1,5 @@
+# Builds the web app in web/ and deploys it to the Azure Web App "Panenka".
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
 
 name: Build and deploy Node.js app to Azure Web App - Panenka
 
@@ -7,6 +7,9 @@ on:
   push:
     branches:
       - 'main'
+    paths: # changes to rl/ don't redeploy the site
+      - 'web/**'
+      - '.github/workflows/main_panenka.yml'
   workflow_dispatch:
 
 jobs:
@@ -14,42 +17,53 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout
+    defaults:
+      run:
+        working-directory: web
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js version
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '24.x'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      - name: npm install, build, and test
+      - name: Install, test and build
         run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
+          npm ci
+          npm test
+          npm run build
+
+      # Only what `node server.js` needs at runtime: the build, production dependencies and the entry file
+      - name: Package
+        run: |
+          npm prune --omit=dev
+          zip -qr ../release.zip build node_modules server.js package.json
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: release.zip
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    
+
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
+
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'Panenka'
           slot-name: 'Production'
-          package: .
+          package: release.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_5AAABDA9DC6C4003B95DB4582BD280AE }}
