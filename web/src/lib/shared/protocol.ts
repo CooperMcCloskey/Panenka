@@ -46,7 +46,7 @@ export const NEW_LOBBY_STATE: ()=>LobbyState = () => ({
 export type ClientMessage =
   | { type: 'join', code: string, token: string }
   | { type: 'start' , lobbyState: LobbyState }
-  | { type: 'input', actions: ClientAction}
+  | { type: 'input', sequence: number, actions: ClientAction}
   | { type: 'addPlayer', player: LobbyPlayer, rev: number }
   | { type: 'removePlayer', playerId: string, rev: number }
   | { type: 'switchTeam', playerId: string, rev: number }
@@ -59,15 +59,16 @@ export type ServerMessage =
       lobbyState: LobbyState;
       controlledPlayerIds: string[]; // the player IDs this client controls
     }
-  | { type: 'snapshot', state: number[] }
+  | { type: 'snapshot', state: number[], acknowledgedSequence: number }
   | { type: 'error', message: string }
 
 export function isLegalInputMessage(value: unknown): boolean {
   const isObject = (v: unknown): v is Record<string, unknown> =>
     v !== null && typeof v === 'object' && !Array.isArray(v);
 
-  // { type: 'input', actions: { [playerId]: Action } }
+  // One sequenced input frame, with actions for the players this client controls.
   if (!isObject(value) || value.type !== 'input' || !isObject(value.actions)) return false;
+  if (!Number.isSafeInteger(value.sequence) || (value.sequence as number) <= 0) return false;
 
   return Object.values(value.actions).every(a =>
     isObject(a)

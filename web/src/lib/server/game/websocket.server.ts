@@ -79,7 +79,7 @@ function connectSocket(socket: WebSocket): void {
         return;
       } 
       else if (message.type === 'input') {
-        if(isLegalInputMessage(message)) room.input(token, message.actions);
+        if(isLegalInputMessage(message)) room.input(token, message.actions, message.sequence);
         else socket.close(1008, 'Illegal inputs');
         return;
       }
@@ -104,4 +104,3 @@ function connectSocket(socket: WebSocket): void {
   });
   socket.on('error', () => socket.terminate());
 };
-
