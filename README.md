@@ -41,6 +41,13 @@ Rooms are in memory and reset when the server restarts; disconnected slots remai
 reserved. Run a single server process. Restart development after changing server
 room code, because the registry survives hot reloads.
 
+Online matches show usernames above each player. Players controlled by your client
+use yellow labels; everyone else uses cream labels. Change colours, font, spacing,
+maximum width, or disable labels in `web/src/lib/render/player-labels.ts`
+(`PLAYER_LABEL_STYLE`). Labels use lobby metadata and stay separate from simulation
+state and network snapshots. `Match` accepts optional `playerLabels` in simulation
+player order, so other game modes can reuse the renderer when they have names.
+
 ## RL
 
 ```sh

@@ -18,6 +18,12 @@
   let controlledPlayers = $derived(data.controlledPlayers);
 
   const players = $derived(lobbyState.players);
+  // Match snapshots use playerMapping order, which can differ from insertion order.
+  // Ownership uses IDs so players with the same username still get the right colour.
+  const playerLabels = $derived(lobbyState.playerMapping.map(id => {
+    const player = players[id];
+    return player && { username: player.username, isCurrentUser: controlledPlayers.includes(id) };
+  }));
   const bluePlayers = $derived(Object.fromEntries(Object.entries(players).filter(([_, p])=>p.team === "blue")));
   const orangePlayers = $derived(Object.fromEntries(Object.entries(players).filter(([_, p])=>p.team === "orange")));
   const spectators: [ClientId, PublicClient][] = $derived(
@@ -73,7 +79,7 @@
 
 {#if lobbyState.started && source}
   <!-- No onEnd: the server sends everyone back to the lobby GAME_END_DELAY after the final whistle -->
-  <Match {source} />
+  <Match {source} {playerLabels} />
   {#if isAdmin}
     <div class="endMatch"><BackButton label="End game" onclick={() => source.endMatch()} /></div>
   {/if}

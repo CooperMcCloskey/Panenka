@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import type { StateSource } from '$lib/shared/sources';
-  import { fitCanvas, render } from '$lib/render';
+  import { fitCanvas, render, type PlayerLabel } from '$lib/render';
   import MatchHeader from './MatchHeader.svelte';
 
   // onEnd is called END_DELAY_MS after the match has a winner.
@@ -10,9 +10,11 @@
   let { 
     source, 
     onEnd, 
+    playerLabels = [],
   }: {
     source: StateSource; 
     onEnd?: () => void; 
+    playerLabels?: readonly (PlayerLabel | undefined)[];
   } = $props();
 
   let canvasArea: HTMLDivElement;
@@ -42,7 +44,7 @@
       source.update(now - last);
       last = now;
       game = source.currentState();
-      render(ctx, game, scale);
+      render(ctx, game, scale, playerLabels);
       raf = requestAnimationFrame(frame);
     }
 

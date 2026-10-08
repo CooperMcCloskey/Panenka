@@ -1,8 +1,12 @@
 import { PLAYER_RADIUS, WORLD_HEIGHT, WORLD_WIDTH } from '$lib/engine/constants';
+import { PLAYER_LABEL_STYLE } from './player-labels';
 import { OUTLINE_WIDTH } from './style';
 
-// Padding so a player at the world edge is drawn in full, outline included.
-export const VIEW_PAD = PLAYER_RADIUS + OUTLINE_WIDTH;
+// Include headroom for labels so they stay above players at the top world edge.
+const labelPadding = PLAYER_LABEL_STYLE.enabled
+  ? PLAYER_LABEL_STYLE.gap + PLAYER_LABEL_STYLE.fontSize + PLAYER_LABEL_STYLE.outlineWidth / 2
+  : 0;
+export const VIEW_PAD = PLAYER_RADIUS + OUTLINE_WIDTH + labelPadding;
 export const VIEW_W = WORLD_WIDTH + VIEW_PAD * 2;
 export const VIEW_H = WORLD_HEIGHT + VIEW_PAD * 2;
 
