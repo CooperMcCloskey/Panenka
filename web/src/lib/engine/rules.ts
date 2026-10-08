@@ -40,6 +40,13 @@ export function ticksRemaining(match: Match): number | null {
   return Math.max(0, match.rules.minutes * 60 * TICK_RATE - match.clock);
 }
 
+// Ticks played since a level timed match went to overtime; null when it isn't in overtime.
+export function overtimeTicks(match: Match): number | null {
+  if (match.rules.kind !== 'time' || match.winner !== null) return null;
+  const over = match.clock - match.rules.minutes * 60 * TICK_RATE;
+  return over >= 0 ? over : null;
+}
+
 // A goal counts once the whole ball is over the line.
 export function goalScoredBy(ball: Body): Team | null {
   if (ball.pos.y <= GOAL_TOP || ball.pos.y >= GOAL_BOTTOM) return null;
@@ -48,7 +55,7 @@ export function goalScoredBy(ball: Body): Team | null {
   return null;
 }
 
-export function checkWinner(match: Match): Team | 'draw' | null {
+export function checkWinner(match: Match): Team | null {
   const { score, rules } = match;
   if (rules.kind === 'goals') {
     if (score.blue >= rules.target) return 'blue';
@@ -56,5 +63,6 @@ export function checkWinner(match: Match): Team | 'draw' | null {
     return null;
   }
   if (ticksRemaining(match)! > 0) return null;
-  return score.blue > score.orange ? 'blue' : score.orange > score.blue ? 'orange' : 'draw';
+  // Level at full time goes to overtime: play on until the next goal decides it
+  return score.blue > score.orange ? 'blue' : score.orange > score.blue ? 'orange' : null;
 }

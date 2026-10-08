@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TICK_RATE } from '$lib/engine/constants';
-  import { ticksRemaining } from '$lib/engine/rules';
+  import { overtimeTicks, ticksRemaining } from '$lib/engine/rules';
   import type { GameState } from '$lib/engine/types';
 
   let { game }: { game: GameState } = $props();
@@ -9,11 +9,14 @@
   const goalScorer = $derived(phase.kind === 'goal' ? phase.scorer : null);
   const countdown = $derived(phase.kind === 'countdown' ? Math.ceil(phase.ticksLeft / TICK_RATE) : null);
   const goalTarget = $derived(rules.kind === 'goals' ? rules.target : null);
+  const formatSeconds = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const clock = $derived.by(() => {
+    // In overtime the clock counts up from full time
+    const overtime = overtimeTicks(game.match);
+    if (overtime !== null) return `+${formatSeconds(Math.floor(overtime / TICK_RATE))}`;
     const ticks = ticksRemaining(game.match);
     if (ticks === null) return null;
-    const seconds = Math.ceil(ticks / TICK_RATE);
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    return formatSeconds(Math.ceil(ticks / TICK_RATE));
   });
 </script>
 

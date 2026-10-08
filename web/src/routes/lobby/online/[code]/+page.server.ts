@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { getRoom } from "$lib/server/game/rooms.server";
+import { getRoom } from "$lib/server/game/roomManager.server";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = ({ params, cookies }) => {
@@ -9,5 +9,6 @@ export const load: PageServerLoad = ({ params, cookies }) => {
   const found = room?.findClient(token) ;
   if (!found) error(400, "Token not found");
   const {clientId, client} = found
-  return {lobbyState: room.lobbyState, clientId, client};
+  const {socket, ...rest} = client //separate out the socket from the rest because it cannot be serialized
+  return {lobbyState: room.lobbyState, clientId, ...rest};
 };

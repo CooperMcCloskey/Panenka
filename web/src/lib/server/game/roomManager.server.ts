@@ -12,15 +12,13 @@ export function cancelClientRemoval(room: Room, token: string) {
   timers?.delete(token);
 }
 
-// TODO merge this function with the function in room.server.ts and have one unified function
 export function removeClient(room: Room, token: string, socket?: WebSocket) {
   const found = room.findClient(token)!;
   if (!found) return undefined;
   const {clientId, client} = found;
-  const player = room.getPlayerFromClient(client);
-  // An old connection must never remove a player who has reconnected elsewhere.
-  if (!player || (socket ? client.socket !== socket : !!client.socket)) return false;
-  // Rename function to cancelClientRemoval
+  
+  if (socket ? client.socket !== socket : !!client.socket) return false;
+
   cancelClientRemoval(room, token);
   room.removeClient(token);
   socket?.terminate();
@@ -63,7 +61,7 @@ export function getRoom(code: string) {
 export function delRoom(code: string) {
   const room = getRoom(code);
   if (room) {
-    room.stop();
+    room.cleanup();
     removalTimers.get(room)?.forEach(timer => clearTimeout(timer));
     removalTimers.delete(room);
     Object.values(room.clients).forEach(c => c.socket?.close(1000, 'Room deleted'));

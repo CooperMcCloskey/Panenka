@@ -3,27 +3,24 @@ import { SNAPSHOT_NUM, TICK_MS } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
 import type { Body, GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
-import type { KeyboardController } from '$lib/shared/controller';
-import type { ClientMessage, LobbyPlayer, LobbyPlayers, LobbyState, ServerMessage } from '$lib/shared/protocol';
+import { KeyboardController } from '$lib/shared/controller';
+import { loadControls } from '$lib/client/bindings';
+import type { ClientMessage, LobbyPlayer, LobbyState, PlayerId, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
 
 const SNAPSHOT_MS = TICK_MS * SNAPSHOT_NUM;
 
 export class NetworkSource implements StateSource {
-  private controllers: Record<string, KeyboardController> = {} 
+  private controllers: Record<PlayerId, KeyboardController> = {} 
   private socket?: WebSocket;
 
   private state?: GameState;
   private previous?: GameState;
 
-  private lobbyRev = 0;
-  private controlledPlayers: string[] = []
+  private controlledPlayers: PlayerId[] = []
 
   private age = SNAPSHOT_MS;
-  private seq = 0;
-  private timer?: ReturnType<typeof setInterval>;
-
-  private started = false;
+  private sendInputTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     private code: string, 
@@ -57,13 +54,14 @@ export class NetworkSource implements StateSource {
     };
     socket.onerror = () => this.onStatus('Connection failed');
 
-    this.timer = setInterval(() => this.sendInput(), 100);
+    this.sendInputTimer = setInterval(() => { if(this.lobbyState.started) this.sendInput() }, TICK_MS);
   }
   stop() {
     Object.values(this.controllers).forEach(c => c.detach());
+    clearInterval(this.sendInputTimer)
 
-    const idleActions = Object.fromEntries(Object.keys(this.controllers).map(k => [k, IDLE]))
-    this.send({ type: 'input', seq: this.seq++, actions: idleActions });
+    const idleActions = Object.fromEntries(this.controlledPlayers.map((playerId)=>[playerId, IDLE]))
+    this.send({ type: 'input', actions: idleActions});
     const socket = this.socket; this.socket = undefined;
     if (socket) { socket.onclose = null; socket.close(); }
   }
@@ -76,20 +74,37 @@ export class NetworkSource implements StateSource {
     else throw new Error("Unknown error type");
   }
   private onLobbyMessage(message: ServerMessage & {type: "lobby"}){
-    if(message.lobbyState.rev <= this.lobbyRev || this.started) return;
+    if(message.lobbyState.rev <= this.lobbyState.rev) return;
     this.lobbyState = message.lobbyState
-    this.controlledPlayers = message.controlledPlayerIds;
-    this.started = message.started;
+    this.setControlledPlayers(message.controlledPlayerIds);
+    // Back in the lobby: forget the old match so the next one doesn't blend from its last frame
+    if (!this.lobbyState.started) this.state = this.previous = undefined;
+  }
+  private setControlledPlayers(playerIds: PlayerId[]) {
+    if (playerIds.join() === this.controlledPlayers.join()) return; // keeps held keys on unrelated lobby updates
+    this.controlledPlayers = playerIds;
+    this.reloadControls();
+  }
+  // One keyboard controller per player this client controls: the first uses the left side
+  // of the keyboard, the second the right (the same bindings as local play).
+  // Also called after the key bindings are edited, so they apply straight away
+  reloadControls() {
+    Object.values(this.controllers).forEach(c => c.detach());
+    const controls = loadControls();
+    this.controllers = Object.fromEntries(
+      this.controlledPlayers.slice(0, controls.length).map((id, i) => [id, new KeyboardController(controls[i])])
+    );
+    if (this.socket) Object.values(this.controllers).forEach(c => c.attach());
   }
   private onSnapshotMessage(message: ServerMessage & {type: "snapshot"}){
     const next = decodeState(
       new Float64Array(message.state), 
     );
-    this.previous = this.started ? this.state : next;
-    this.state = next; this.age = 0; this.started = true;
+    this.previous = this.lobbyState.started ? this.state : next;
+    this.state = next; this.age = 0; this.lobbyState.started = true;
   }
   private onErrorMessage(message: ServerMessage & {type: "error"}){
-
+    //TODO
   }
 
   private send(message: ClientMessage) {
@@ -98,21 +113,35 @@ export class NetworkSource implements StateSource {
   }
   private sendInput() {
     const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction()])))
-    this.send({ type: 'input', seq: this.seq++, actions });
+    this.send({ type: 'input', actions });
   }
-  startMatch() { this.send({ type: 'start', lobbyState: this.lobbyState }); }
+  startMatch() { this.send({ 
+    type: 'start', 
+    lobbyState: {...this.lobbyState, started: true} 
+  }); }
   
-  addPlayer(player: LobbyPlayer, clientId) {
-    let lobbyState = this.lobbyState;
-    const playerId = 
-    lobbyState.players[]
+  addPlayer(player: LobbyPlayer) {
+    this.send({
+      type: "addPlayer",
+      player,
+      rev: this.lobbyState.rev + 1
+    })
   }
-  deletePlayer(playerId: string) {
-    let lobbyState = this.lobbyState;
-    delete lobbyState.players[playerId]
-    this.send({ type: 'setLobby', lobbyState})
+  deletePlayer(playerId: PlayerId) {
+    this.send({
+      type: 'removePlayer',
+      playerId,
+      rev: this.lobbyState.rev + 1
+    })
   }
-
+  setRules(rules: MatchRules) {
+    this.send({
+      type: 'setRules',
+      newRules: rules,
+      rev: this.lobbyState.rev + 1
+    })
+  }
+  endMatch() { this.send({ type: 'endMatch' }); }
   getTeamSizes(): TeamSizes{
     let blue = 0;
     let orange = 0;
@@ -133,6 +162,7 @@ export class NetworkSource implements StateSource {
       world: {
         ball: blend(previous.world.ball, state.world.ball),
         players: state.world.players.map((p, i) => blend(previous.world.players[i], p)),
-    } };
+      }
+    };
   }
 }

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   import { clampInt } from "$lib/engine/rules";
   import type { PageProps } from "./$types";
 
@@ -10,6 +12,7 @@
   let roomCode = $state("");
   let joining = $state(false);
 
+  //TODO: why is this not being used?
   function limitTyped(el: HTMLInputElement, max: number): number {
     if (el.value === "") return NaN;
     const n = clampInt(Number(el.value), 1, max, 1);
@@ -27,11 +30,15 @@
     aria-label="Username" placeholder="Username"
     autocomplete="off"
   >
+  <!-- Back from joining goes to the Join / Create options, otherwise to the main menu -->
+  <div class="backButton">
+    <BackButton label={joining ? "Back" : "Back to main menu"}
+      onclick={() => (joining ? (joining = false) : goto(resolve("/")))} />
+  </div>
   {#if joining}
     <form id="joinRoomForm" method="POST" action="?/joinRoom">
       <input name="roomCode" required id="roomCodeInput" type="text" bind:value={roomCode} placeholder="Room Code">
       <button id="joinButton" type="submit">Join</button>
-      <div class="backButton"><BackButton type="button" onclick={() => (joining = false)}/></div>
     </form>
   {:else}
     <div id="options">

@@ -1,16 +1,22 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import { getRoom, cancelClientRemoval, removeClient, scheduleClientRemoval,
-  deleteRoomIfEmpty, HEARTBEAT_MS, MAX_MISSED_PINGS } from './rooms.server';
+  deleteRoomIfEmpty, HEARTBEAT_MS, MAX_MISSED_PINGS } from './roomManager.server';
 import type { Room } from './room.server';
 import { isLegalInputMessage, type ClientMessage } from '$lib/shared/protocol';
 
 const runtime = globalThis as typeof globalThis & { panenkaSockets?: WebSocketServer };
 export function startWebSocketServer(): WebSocketServer {
-  if (runtime.panenkaSockets) return runtime.panenkaSockets;
-  const wss = new WebSocketServer({ port: 8080, maxPayload: 2048 });
-  runtime.panenkaSockets = wss;
-  wss.on('error', console.error);
-  wss.on('connection', connectSocket)
+  let wss = runtime.panenkaSockets;
+  if (!wss) {
+    wss = runtime.panenkaSockets = new WebSocketServer({ port: 8080, maxPayload: 2048 });
+    wss.on('error', console.error);
+  }
+  // The server outlives dev reloads of this file, so swap in the current handler;
+  // otherwise edits here only apply after restarting the dev server
+  if (!wss.listeners('connection').includes(connectSocket)) {
+    wss.removeAllListeners('connection');
+    wss.on('connection', connectSocket);
+  }
   return wss;
 }
 
@@ -73,7 +79,7 @@ function connectSocket(socket: WebSocket): void {
         return;
       } 
       else if (message.type === 'input') {
-        if(isLegalInputMessage(message)) room.input(token, message.action);
+        if(isLegalInputMessage(message)) room.input(token, message.actions);
         else socket.close(1008, 'Illegal inputs');
         return;
       }
@@ -82,7 +88,8 @@ function connectSocket(socket: WebSocket): void {
       else if (message.type === 'removePlayer') room.removePlayer(token, message.playerId, message.rev);
       else if (message.type === 'switchTeam') room.switchPlayerTeam(token, message.playerId, message.rev);
       else if (message.type === 'setRules') room.setRules(token, message.newRules, message.rev);
-      socket.close(1008, 'Invalid message');
+      else if (message.type === 'endMatch') room.endMatch(token);
+      else socket.close(1008, 'Invalid message');
     } catch { socket.close(1008, 'Invalid Message'); }
   });
   socket.on('close', () => {
@@ -93,7 +100,6 @@ function connectSocket(socket: WebSocket): void {
     if (room && client?.socket === socket) {
       room.disconnect(socket);
       scheduleClientRemoval(room, token);
-      deleteRoomIfEmpty(room);
     }
   });
   socket.on('error', () => socket.terminate());

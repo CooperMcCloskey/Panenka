@@ -1,46 +1,57 @@
 import { type MatchRules, type Team, type Action, DEFAULT_MATCH_RULES } from '$lib/engine/types';
 import { WebSocket } from "ws";
 
+export type PlayerId = string;
+export type ClientId = string;
 export type LobbyPlayer = {username: string, team: Team}
 
 export type Client = {
   token: string,
   socket?: WebSocket,
-  playerIDs: string[],
+  controlledPlayers: PlayerId[],
   username: string,
 }
-
-export type LobbyPlayers = Record<string, LobbyPlayer>
-
-export type ClientAction = {
-  actions: Record<string, Action>,
-  queue: Record<string, Action[]>, 
+export type PublicClient = {
+  username: string
+  controlledPlayers: PlayerId[]
 }
+
+export type LobbyPlayers = Record<PlayerId, LobbyPlayer>
+export type ClientAction = Record<PlayerId, Action>
 
 export type LobbyState = {
   rev: number,
-  rules: MatchRules,  
+
   players: LobbyPlayers,
+  clients: Record<ClientId, PublicClient>,
+  adminId: string 
+
+  rules: MatchRules,  
   playerMapping: string[],
   started: boolean,
 }
 
-export const NEW_LOBBY_STATE: LobbyState = {
+export const NEW_LOBBY_STATE: ()=>LobbyState = () => ({
   rev: 0, 
-  rules: DEFAULT_MATCH_RULES, 
+  
   players: {}, 
+  clients: {},
+  adminId: "",
+
+  rules: DEFAULT_MATCH_RULES, 
   playerMapping: [],
   started: false
-};
+});
 
 export type ClientMessage =
   | { type: 'join', code: string, token: string }
   | { type: 'start' , lobbyState: LobbyState }
-  | { type: 'input', action: ClientAction}
+  | { type: 'input', actions: ClientAction}
   | { type: 'addPlayer', player: LobbyPlayer, rev: number }
   | { type: 'removePlayer', playerId: string, rev: number }
   | { type: 'switchTeam', playerId: string, rev: number }
   | { type: 'setRules', newRules: MatchRules , rev: number }
+  | { type: 'endMatch' }
 
 export type ServerMessage =
   | {
@@ -55,11 +66,10 @@ export function isLegalInputMessage(value: unknown): boolean {
   const isObject = (v: unknown): v is Record<string, unknown> =>
     v !== null && typeof v === 'object' && !Array.isArray(v);
 
-  if (!isObject(value) || value.type !== 'input') return false;
-  const input = value.action;
-  if (!isObject(input) || !isObject(input.actions)) return false;
+  // { type: 'input', actions: { [playerId]: Action } }
+  if (!isObject(value) || value.type !== 'input' || !isObject(value.actions)) return false;
 
-  return Object.values(input.actions).every(a =>
+  return Object.values(value.actions).every(a =>
     isObject(a)
     && [-1, 0, 1].includes(a.moveX as number)
     && [-1, 0, 1].includes(a.moveY as number)

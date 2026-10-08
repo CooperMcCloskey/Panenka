@@ -2,6 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { dev } from "$app/environment";
 import { resolve } from "$app/paths";
 import { createRoom, getRoom } from "$lib/server/game/roomManager.server";
+import { isValidUsername } from "$lib/shared/limits";
 import type { Actions } from "./$types";
 
 export const actions = {
@@ -9,11 +10,11 @@ export const actions = {
     const data = await request.formData();
     const username = data.get("username");
 
-    if (typeof username !== "string" || !username.trim() || username.length > 20) {
+    if (!isValidUsername(username)) {
       return fail(400, { message: "Invalid username."});
     }
 
-    const room = createRoom(username);
+    const room = createRoom(username.trim());
     const token = room.adminToken
     if(!token) return fail(500, "Failed to create admin token");
 
@@ -25,7 +26,7 @@ export const actions = {
     const data = await request.formData();
     const username = data.get("username");
 
-    if (typeof username !== "string" || !username.trim() || username.length > 20) {
+    if (!isValidUsername(username)) {
       return fail(400, { message: "Invalid username."});
     }
 
@@ -35,7 +36,7 @@ export const actions = {
       return fail(404, { message: "Room not found."});
     }
 
-    const {clientId, client} = room.findClient(cookies.get(`room_${room.code}`)) ?? room.addClient(username);
+    const {clientId, client} = room.findClient(cookies.get(`room_${room.code}`)) ?? room.addClient(username.trim());
     
     cookies.set(`room_${room.code}`, client.token, { path: "/", httpOnly: true, sameSite: "strict", secure: !dev });
     redirect(303, resolve("/lobby/online/[code]", { code: room.code }));
