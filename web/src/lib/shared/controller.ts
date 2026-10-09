@@ -22,12 +22,18 @@ export class KeyboardController implements Controller {
 
   // Inspect held keys and pending taps without consuming a pending kick.
   peekAction(): Action {
+    const action = this.peekHeldAction();
+    return { ...action, kick: this.kicked || action.kick };
+  }
+
+  // Prediction observes key releases without consuming the transport's kick latch.
+  peekHeldAction(): Action {
     const key = (code: string) => (this.held.has(code) ? 1 : 0);
     const { up, left, down, right, kick } = this.controls;
     return {
       moveX: (key(right) - key(left)) as Action['moveX'],
       moveY: (key(down) - key(up)) as Action['moveY'],
-      kick: this.kicked || this.held.has(kick),
+      kick: this.held.has(kick),
     };
   }
 
