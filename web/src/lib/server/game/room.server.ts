@@ -1,9 +1,9 @@
 import { nanoid } from 'nanoid';
 import { WebSocket } from 'ws';
-import { IDLE } from '$lib/engine/actions';
+import { InputBuffer } from '$lib/shared/input-buffer';
 import { TICK_MS, MAX_FRAME_MS, SNAPSHOT_NUM } from '$lib/engine/constants';
 import { step } from '$lib/engine/step';
-import { type Action, type GameState, type MatchRules } from '$lib/engine/types';
+import { type GameState, type MatchRules } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
 import { NEW_LOBBY_STATE, type ClientAction, type LobbyState, type ServerMessage } from '$lib/shared/protocol';
 import type { Client, ClientId, LobbyPlayer, PublicClient } from "$lib/shared/protocol";
@@ -11,6 +11,8 @@ import { createState } from '$lib/engine/state'
 import { MAX_TEAMSIZE } from '$lib/engine/rules';
 import { isValidRules, isValidUsername, MAX_LOCAL_PLAYERS } from '$lib/shared/limits';
 import { GAME_END_DELAY } from './constants';
+import { TickScheduler } from './tick-scheduler';
+import { broadcastSnapshot } from './snapshot-broadcast';
 
 type Result = 
   | {type: "ok", message?: string} 
@@ -30,13 +32,13 @@ export class Room {
   lobbyState: LobbyState = NEW_LOBBY_STATE();
   state: GameState = createState({blue: 0, orange: 0}, this.lobbyState.rules);
 
-  private timer?: ReturnType<typeof setInterval>;
+  private timer?: TickScheduler;
   private endTimer?: ReturnType<typeof setTimeout>;
   private last = 0;
   private accumulator = 0;
 
   //maps playerId to playerAction
-  private readonly playerActions: Record<string, Action> = {};
+  private readonly playerActions = new InputBuffer();
 
   constructor(readonly code: string, adminUsername: string) {
     const {clientId: adminId, client: adminClient} = this.addClient(adminUsername);
@@ -45,29 +47,34 @@ export class Room {
     this.broadcastLobby()
   };
   cleanup() {
-    clearInterval(this.timer); this.timer = undefined;
+    this.timer?.stop(); this.timer = undefined;
     clearTimeout(this.endTimer); this.endTimer = undefined;
   }
 
   private update() {
-    // setInterval drifts, so run however many ticks of real time have passed (capped after a stall)
+    // Run elapsed physics ticks, capped after a stall. The scheduler supplies
+    // evenly spaced deadlines; the accumulator keeps physics at exactly 60 Hz.
     const now = performance.now();
     this.accumulator += Math.min(now - this.last, MAX_FRAME_MS);
     this.last = now;
 
-    while (this.accumulator >= TICK_MS) {
-      const actions = this.playerMapping.map((id)=>this.playerActions[id])
+    let snapshotDue = false;
+    while (this.accumulator + 1e-7 >= TICK_MS) {
+      const actions = this.playerActions.take(this.playerMapping);
       this.state = step(this.state, actions);
-      this.accumulator -= TICK_MS;
+      this.accumulator = Math.max(0, this.accumulator - TICK_MS);
       // After the final whistle players can keep moving (step() ignores goals then)
       // for GAME_END_DELAY, then everyone goes back to the lobby
       if (this.state.match.winner !== null && !this.endTimer) {
         this.endTimer = setTimeout(() => this.returnToLobby(), GAME_END_DELAY);
       }
       if (this.state.match.tick % SNAPSHOT_NUM === 0) {
-        this.broadcastSnapshot();
+        snapshotDue = true;
       }
     }
+    // Catch-up ticks still run every collision, but only the freshest result is
+    // sent after a stall instead of a burst of already obsolete snapshots.
+    if (snapshotDue) this.broadcastSnapshot();
   }
 
   // -----------------------------------------------------------------------------
@@ -131,8 +138,7 @@ export class Room {
     }
   };
   private broadcastSnapshot() {
-    const message: ServerMessage = { type: 'snapshot', state: Array.from(encodeState(this.state)) };
-    Object.values(this.clients).forEach(c => { if (c.socket) this.send(c.socket, message); });
+    broadcastSnapshot(this.state, Object.values(this.clients).flatMap(c => c.socket ? [c.socket] : []));
   }
 
   // -----------------------------------------------------------------------------
@@ -153,7 +159,8 @@ export class Room {
     if (this.state && this.started && !this.state.match.winner && !this.timer) {
       this.last = performance.now();
       this.accumulator = 0;
-      this.timer = setInterval(() => this.update(), TICK_MS);
+      this.timer = new TickScheduler(() => this.update());
+      this.timer.start();
     }
     return client;
   }
@@ -168,7 +175,7 @@ export class Room {
       let playerId = c.controlledPlayers[i];
       //Then get the p object from inputs and set them to nothing
       // TODO figure out if this actually needs doing
-      this.playerActions[playerId] = IDLE;
+      this.playerActions.release(playerId);
     }
 
     this.broadcastLobby();
@@ -215,7 +222,8 @@ export class Room {
     this.accumulator = 0;
     this.broadcastLobby();
     this.broadcastSnapshot();
-    this.timer = setInterval(() => this.update(), TICK_MS);
+    this.timer = new TickScheduler(() => this.update());
+    this.timer.start();
 
     this.broadcastLobby();
     return {type: "ok"};
@@ -228,7 +236,7 @@ export class Room {
 
     for (const [playerID, action] of Object.entries(actions)) {
       if (!client.controlledPlayers.includes(playerID)) return {type: "fail", message: "Sent an action for a player the client doesn't control."};
-      this.playerActions[playerID] = action;
+      this.playerActions.set(playerID, action);
     }
     return {type: "ok"}
   }
@@ -253,7 +261,7 @@ export class Room {
     if(player.team === "orange") this.lobbyState.playerMapping.push(playerId)
     // Rebuilt so no extra fields from the client message are stored
     this.players[playerId] = { username: player.username.trim(), team: player.team };
-    this.playerActions[playerId] = IDLE;
+    this.playerActions.release(playerId);
 
     this.broadcastLobby();
     return {type: "ok"};
@@ -276,7 +284,7 @@ export class Room {
     const owner = Object.values(this.clients).find(c => c.controlledPlayers.includes(playerId));
     if(owner) owner.controlledPlayers = owner.controlledPlayers.filter(id => id !== playerId);
     delete this.players[playerId];
-    delete this.playerActions[playerId];
+    this.playerActions.remove(playerId);
     this.lobbyState.playerMapping = this.playerMapping.filter(id => id !== playerId);
     this.state = createState(this.teamSizes, this.rules);
 

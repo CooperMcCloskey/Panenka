@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <title>Panenka football emblem</title>
+  <rect width="96" height="96" rx="24" fill="#14202B"/>
+  <path d="M16 48h64M48 16v64" stroke="#358A58" stroke-width="3"/>
+  <circle cx="48" cy="48" r="30" fill="#FFF6E0"/>
+  <path d="m48 31 16 12-6 19H38l-6-19 16-12Z" fill="#14202B"/>
+  <path d="m31 24 1 19-13 7M65 24l-1 19 13 7M58 62l8 12M38 62l-8 12" stroke="#14202B" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="19" cy="22" r="8" fill="#2F7FF5" stroke="#14202B" stroke-width="3"/>
+  <circle cx="77" cy="74" r="8" fill="#FF8A2B" stroke="#14202B" stroke-width="3"/>
+</svg>

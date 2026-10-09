@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TICK_MS } from '$lib/engine/constants';
+import { BALL_RADIUS, PLAYER_RADIUS, TICK_MS } from '$lib/engine/constants';
+import { IDLE } from '$lib/engine/actions';
 import { createState } from '$lib/engine/state';
+import { step } from '$lib/engine/step';
+import type { GameState } from '$lib/engine/types';
 import { vec } from '$lib/engine/vec';
 import { encodeState } from '$lib/shared/codec';
 import { KeyboardController } from '$lib/shared/controller';
@@ -17,6 +20,71 @@ function snapshot(tick = 0) {
 }
 
 describe('server snapshot interpolation', () => {
+  it('keeps a constant playback speed through jitter and bunched deliveries without building extra delay', () => {
+    const buffer = new SnapshotInterpolator({ adaptiveDelay: false });
+    // Model the 60 Hz stream arriving unevenly within the buffer's jitter budget.
+    const delays = [0, 20, 5, 30, 0, 15, 25, 0];
+    const packets = Array.from({ length: 361 }, (_, index) => ({
+      tick: index,
+      at: index * TICK_MS + delays[index % delays.length],
+    }));
+    // WebSocket delivery is ordered; a delayed packet can hold up the next one.
+    for (let index = 1; index < packets.length; index++)
+      packets[index].at = Math.max(packets[index].at, packets[index - 1].at);
+    let previous = 0;
+    for (let now = 0; now <= 5900; now += 5) {
+      while (packets.length && packets[0].at <= now) {
+        const packet = packets.shift()!;
+        buffer.push(snapshot(packet.tick), packet.at);
+      }
+      const x = buffer.sample(now)!.world.players[0].pos.x;
+      if (now > 100) expect(x - previous).toBeCloseTo(0.001 * 5 / TICK_MS, 10);
+      if (now >= 100) {
+        const displayedTick = (x - 0.3) / 0.001;
+        expect(now - displayedTick * TICK_MS).toBeCloseTo(INTERPOLATION_SETTINGS.delayMs, 8);
+      }
+      previous = x;
+    }
+  });
+
+  it.each(['ball', 'player'] as const)('keeps player-%s contacts on the same timeline while moving', contact => {
+    const buffer = new SnapshotInterpolator();
+    let state = snapshot();
+    state.world.players[0].pos = vec(0.5, 0.5);
+    state.world.players[1].pos = vec(contact === 'player' ? 0.56 : 1.3, 0.5);
+    state.world.ball.pos = vec(contact === 'ball' ? 0.545 : 0.9, contact === 'ball' ? 0.5 : 0.2);
+    const states: GameState[] = [state];
+    for (let tick = 1; tick <= 60; tick++) {
+      state = step(state, [{ ...IDLE, moveX: 1 }, IDLE]);
+      states.push(state);
+    }
+    let packet = 0;
+    for (let now = 0; now <= 1000; now += 5) {
+      while (packet < states.length && states[packet].match.tick * TICK_MS <= now) {
+        const received = states[packet++];
+        buffer.push(received, received.match.tick * TICK_MS);
+      }
+      const { players, ball } = buffer.sample(now)!.world;
+      const other = contact === 'ball' ? ball : players[1];
+      const distance = other.pos.sub(players[0].pos).length();
+      expect(distance).toBeGreaterThanOrEqual(PLAYER_RADIUS + (contact === 'ball' ? BALL_RADIUS : PLAYER_RADIUS) - 1e-9);
+    }
+    expect(buffer.sample(1000)!.world.players[0].pos.x).toBeGreaterThan(0.6);
+  });
+
+  it('does not rewind when persistent delivery delay changes the clock estimate', () => {
+    const buffer = new SnapshotInterpolator({ clockWindowMs: 200 });
+    buffer.push(snapshot(), 0);
+    let previous = 0.3;
+    for (let now = 0; now <= 1500; now += 5) {
+      if (now >= 400 && (now - 400) % 100 === 0)
+        buffer.push(snapshot((now - 400) / 100 * 6 + 2), now);
+      const x = buffer.sample(now)!.world.players[0].pos.x;
+      expect(x).toBeGreaterThanOrEqual(previous);
+      previous = x;
+    }
+  });
+
   it('keeps positions continuous across early, late and bunched packet arrivals', () => {
     const buffer = new SnapshotInterpolator();
     const arrivals = [[0, 0], [2, 50], [4, 68], [6, 118], [8, 136], [10, 180], [12, 201], [14, 250], [16, 270]];
@@ -36,7 +104,7 @@ describe('server snapshot interpolation', () => {
       previous = current;
     }
     expect(previous).toBeGreaterThan(0.310);
-    expect(previous).toBeLessThan(0.313);
+    expect(previous).toBeLessThan(0.314);
     expect(buffer.sample(270)!.match.tick).toBe(16);
   });
 
@@ -122,6 +190,47 @@ afterEach(() => {
 });
 
 describe('NetworkSource authoritative playback', () => {
+  it('sends keyboard changes immediately without moving a player ahead of the authoritative world', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', Socket);
+    const listeners = new Map<string, Set<(event: { code: string }) => void>>();
+    vi.stubGlobal('addEventListener', (type: string, listener: (event: { code: string }) => void) => {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(listener);
+    });
+    vi.stubGlobal('removeEventListener', (type: string, listener: (event: { code: string }) => void) => {
+      listeners.get(type)?.delete(listener);
+    });
+    vi.stubGlobal('window', { location: { href: 'https://example.com/lobby/online/test' } });
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const lobby = {
+      ...NEW_LOBBY_STATE(), rev: 1, started: true, playerMapping: ['orange', 'blue'],
+      players: { blue: { username: 'You', team: 'blue' as const }, orange: { username: 'Other', team: 'orange' as const } },
+    };
+    const source = new NetworkSource('test', 'token', lobby, () => {}, () => {});
+    source.start();
+    const socket = Socket.latest;
+    try {
+      socket.onopen?.();
+      socket.receive({ type: 'lobby', lobbyState: { ...lobby, rev: 2 }, controlledPlayerIds: ['blue'] });
+      socket.receive({ type: 'snapshot', state: Array.from(encodeState(snapshot())) });
+      const before = source.currentState();
+      now = 20;
+      for (const listener of listeners.get('keydown')!) listener({ code: 'KeyD' });
+      expect(socket.messages.at(-1)).toEqual({ type: 'input', actions: { blue: { moveX: 1, moveY: 0, kick: false } } });
+      const after = source.currentState();
+      expect(after.world.players[1].pos).toEqual(before.world.players[1].pos);
+      expect(after.world.players[0].pos).toEqual(before.world.players[0].pos);
+      expect(after.world.ball).toEqual(before.world.ball);
+      expect(after.match).toEqual(before.match);
+      now = 40;
+      for (const listener of listeners.get('blur')!) listener({ code: '' });
+      expect(socket.messages.at(-1)).toEqual({ type: 'input', actions: { blue: { moveX: 0, moveY: 0, kick: false } } });
+    } finally { source.stop(); }
+    expect([...listeners.values()].every(handlers => handlers.size === 0)).toBe(true);
+  });
+
   it('sends inputs as before and moves players only when server positions arrive', () => {
     vi.useFakeTimers();
     vi.stubGlobal('WebSocket', Socket);

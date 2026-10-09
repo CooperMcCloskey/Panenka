@@ -1,5 +1,4 @@
 import { IDLE } from '$lib/engine/actions';
-import { TICK_MS } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
 import type { GameState, MatchRules, TeamSizes } from '$lib/engine/types';
 import { decodeState } from '$lib/shared/codec';
@@ -8,6 +7,7 @@ import { loadControls } from '$lib/client/bindings';
 import type { ClientMessage, LobbyPlayer, LobbyState, PlayerId, ServerMessage } from '$lib/shared/protocol';
 import type { StateSource } from '$lib/shared/sources';
 import { SnapshotInterpolator, type InterpolationSettings } from './snapshot-interpolator';
+import { InputSender } from './input-sender';
 
 export class NetworkSource implements StateSource {
   private controllers: Record<PlayerId, KeyboardController> = {} 
@@ -17,7 +17,11 @@ export class NetworkSource implements StateSource {
 
   private controlledPlayers: PlayerId[] = []
 
-  private sendInputTimer?: ReturnType<typeof setInterval>;
+  private inputSender = new InputSender(() => this.sendInput(), () => this.lobbyState.started);
+
+  get diagnostics() {
+    return { ...this.snapshots.diagnostics, queuedInputBytes: this.socket?.bufferedAmount ?? 0 };
+  }
 
   constructor(
     private code: string, 
@@ -54,11 +58,11 @@ export class NetworkSource implements StateSource {
     };
     socket.onerror = () => this.onStatus('Connection failed');
 
-    this.sendInputTimer = setInterval(() => { if(this.lobbyState.started) this.sendInput() }, TICK_MS);
+    this.inputSender.start();
   }
   stop() {
     Object.values(this.controllers).forEach(c => c.detach());
-    clearInterval(this.sendInputTimer)
+    this.inputSender.stop();
 
     const idleActions = Object.fromEntries(this.controlledPlayers.map((playerId)=>[playerId, IDLE]))
     this.send({ type: 'input', actions: idleActions});
@@ -78,7 +82,10 @@ export class NetworkSource implements StateSource {
     this.lobbyState = message.lobbyState
     this.setControlledPlayers(message.controlledPlayerIds);
     // Back in the lobby: forget the old match so the next one doesn't blend from its last frame
-    if (!this.lobbyState.started) this.snapshots.clear();
+    if (!this.lobbyState.started) {
+      this.snapshots.clear();
+    }
+    this.inputSender.changed();
   }
   private setControlledPlayers(playerIds: PlayerId[]) {
     if (playerIds.join() === this.controlledPlayers.join()) return; // keeps held keys on unrelated lobby updates
@@ -92,15 +99,18 @@ export class NetworkSource implements StateSource {
     Object.values(this.controllers).forEach(c => c.detach());
     const controls = loadControls();
     this.controllers = Object.fromEntries(
-      this.controlledPlayers.slice(0, controls.length).map((id, i) => [id, new KeyboardController(controls[i])])
+      this.controlledPlayers.slice(0, controls.length).map((id, i) => [id,
+        new KeyboardController(controls[i], this.inputSender.changed)])
     );
     if (this.socket) Object.values(this.controllers).forEach(c => c.attach());
+    this.inputSender.changed();
   }
   private onSnapshotMessage(message: ServerMessage & {type: "snapshot"}){
     const next = decodeState(
       new Float64Array(message.state), 
     );
-    this.snapshots.push(next, performance.now());
+    const now = performance.now();
+    this.snapshots.push(next, now);
     this.lobbyState.started = true;
   }
   private onErrorMessage(message: ServerMessage & {type: "error"}){
@@ -112,8 +122,16 @@ export class NetworkSource implements StateSource {
       this.socket.send(JSON.stringify(message));
   }
   private sendInput() {
+    // Preserve latched kicks until a packet can actually be sent. Don't queue
+    // additional movement behind an earlier packet on a congested connection.
+    if (this.socket?.readyState !== WebSocket.OPEN || this.socket.bufferedAmount > 0) return false;
     const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction()])))
     this.send({ type: 'input', actions });
+    // A press and release coalesced into a short kick needs its release sent
+    // promptly too, otherwise the server would hold kick until the heartbeat.
+    if (Object.entries(this.controllers).some(([id, controller]) => actions[id].kick && !controller.peekAction().kick))
+      this.inputSender.changed();
+    return true;
   }
   startMatch() { this.send({ 
     type: 'start', 
@@ -152,7 +170,8 @@ export class NetworkSource implements StateSource {
   // Snapshot playback uses the monotonic clock when the current frame is drawn.
   update(_dtMs: number) {}
   currentState(): GameState {
-    return this.snapshots.sample(performance.now())
+    const now = performance.now();
+    return this.snapshots.sample(now)
       ?? createState(this.getTeamSizes(), this.lobbyState.rules);
   }
 }
