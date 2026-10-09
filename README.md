@@ -1,6 +1,9 @@
 # Panenka
 
 A football-style game, built to train multi-agent RL policies on.
+Play Now!
+
+[Panenka Game](https://panenkaball.com)
 
 - `web/` — the game (SvelteKit). Local and online play; play-vs-AI later.
 - `rl/` — training (Python). A port of the game engine plus the MARL experiments.
