@@ -6,13 +6,14 @@ import { step } from '$lib/engine/step';
 import { type GameState, type MatchRules } from '$lib/engine/types';
 import { encodeState } from '$lib/shared/codec';
 import { NEW_LOBBY_STATE, type ClientAction, type LobbyState, type ServerMessage } from '$lib/shared/protocol';
-import type { Client, ClientId, LobbyPlayer, PublicClient } from "$lib/shared/protocol";
+import type { Client, ClientId, LobbyPlayer, PublicClient, SnapshotNetwork } from "$lib/shared/protocol";
 import { createState } from '$lib/engine/state'
 import { MAX_TEAMSIZE } from '$lib/engine/rules';
 import { isValidRules, isValidUsername, MAX_LOCAL_PLAYERS } from '$lib/shared/limits';
 import { GAME_END_DELAY } from './constants';
 import { TickScheduler } from './tick-scheduler';
 import { broadcastSnapshot } from './snapshot-broadcast';
+import { InputAcknowledgements } from './input-acknowledgements';
 
 type Result = 
   | {type: "ok", message?: string} 
@@ -39,6 +40,8 @@ export class Room {
 
   //maps playerId to playerAction
   private readonly playerActions = new InputBuffer();
+  private readonly inputAcks = new InputAcknowledgements();
+  private serverFrameMs = 0;
 
   constructor(readonly code: string, adminUsername: string) {
     const {clientId: adminId, client: adminClient} = this.addClient(adminUsername);
@@ -55,6 +58,7 @@ export class Room {
     // Run elapsed physics ticks, capped after a stall. The scheduler supplies
     // evenly spaced deadlines; the accumulator keeps physics at exactly 60 Hz.
     const now = performance.now();
+    this.serverFrameMs = now - this.last;
     this.accumulator += Math.min(now - this.last, MAX_FRAME_MS);
     this.last = now;
 
@@ -62,6 +66,7 @@ export class Room {
     while (this.accumulator + 1e-7 >= TICK_MS) {
       const actions = this.playerActions.take(this.playerMapping);
       this.state = step(this.state, actions);
+      this.inputAcks.appliedAt(this.state.match.tick, now);
       this.accumulator = Math.max(0, this.accumulator - TICK_MS);
       // After the final whistle players can keep moving (step() ignores goals then)
       // for GAME_END_DELAY, then everyone goes back to the lobby
@@ -138,7 +143,19 @@ export class Room {
     }
   };
   private broadcastSnapshot() {
-    broadcastSnapshot(this.state, Object.values(this.clients).flatMap(c => c.socket ? [c.socket] : []));
+    const recipients = new Map(Object.entries(this.clients).flatMap(([id, client]) =>
+      client.socket ? [[client.socket, id] as const] : []));
+    broadcastSnapshot(this.state, [...recipients.keys()], socket => this.snapshotNetwork(recipients.get(socket)!));
+  }
+
+  private snapshotNetwork(clientId: string): SnapshotNetwork {
+    return {
+      heldActions: this.playerActions.peek(this.playerMapping),
+      inputAck: this.inputAcks.get(clientId),
+      rttMs: this.clients[clientId]?.rttMs,
+      serverFrameMs: this.serverFrameMs,
+      serverTickDelayMs: this.timer?.latenessMs ?? 0,
+    };
   }
 
   // -----------------------------------------------------------------------------
@@ -151,10 +168,12 @@ export class Room {
     const {clientId, client} = found;
     client.socket?.close(1000, 'Reconnected elsewhere');
     client.socket = socket;
+    this.inputAcks.remove(clientId);
+    client.rttMs = undefined;
 
     this.broadcastLobby();
 
-    if (this.started && this.state) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)) });
+    if (this.started && this.state) this.send(socket, { type: 'snapshot', state: Array.from(encodeState(this.state)), network: this.snapshotNetwork(clientId) });
 
     if (this.state && this.started && !this.state.match.winner && !this.timer) {
       this.last = performance.now();
@@ -200,6 +219,7 @@ export class Room {
 
     for (const playerId of client.controlledPlayers) delete this.players[playerId];
     delete this.clients[clientId];
+    this.inputAcks.remove(clientId);
     this.broadcastLobby()
     return {type: "ok"}
   }
@@ -220,6 +240,9 @@ export class Room {
     this.state = createState(this.teamSizes, this.rules);
     this.last = performance.now();
     this.accumulator = 0;
+    this.playerActions.clear();
+    this.inputAcks.clear();
+    this.serverFrameMs = 0;
     this.broadcastLobby();
     this.broadcastSnapshot();
     this.timer = new TickScheduler(() => this.update());
@@ -229,15 +252,19 @@ export class Room {
     return {type: "ok"};
   }
 
-  input(token: string, actions: ClientAction): Result {
+  input(token: string, actions: ClientAction, sequence?: number): Result {
     const found = this.findClient(token);
     if (!found) return {type: "error", message: "Invalid token"}
     const {clientId, client} = found
 
+    if (Object.keys(actions).some(id => !client.controlledPlayers.includes(id)))
+      return {type: 'fail', message: "Sent an action for a player the client doesn't control."};
+    if (sequence !== undefined && !this.inputAcks.accepts(clientId, sequence)) return {type: 'ok'};
+
     for (const [playerID, action] of Object.entries(actions)) {
-      if (!client.controlledPlayers.includes(playerID)) return {type: "fail", message: "Sent an action for a player the client doesn't control."};
       this.playerActions.set(playerID, action);
     }
+    if (sequence !== undefined) this.inputAcks.receive(clientId, sequence, performance.now());
     return {type: "ok"}
   }
   // Add player

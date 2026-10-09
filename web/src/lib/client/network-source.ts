@@ -8,19 +8,33 @@ import type { ClientMessage, LobbyPlayer, LobbyState, PlayerId, ServerMessage } 
 import type { StateSource } from '$lib/shared/sources';
 import { SnapshotInterpolator, type InterpolationSettings } from './snapshot-interpolator';
 import { InputSender } from './input-sender';
+import { TICK_MS } from '$lib/engine/constants';
+import { ClientPrediction, type PredictionSettings } from './client-prediction';
+import { NetworkMetrics } from './network-metrics';
+import type { ClientAction } from '$lib/shared/protocol';
+
+export type NetworkPlaybackSettings = Partial<InterpolationSettings> & {
+  prediction?: false | Partial<PredictionSettings>;
+};
 
 export class NetworkSource implements StateSource {
   private controllers: Record<PlayerId, KeyboardController> = {} 
   private socket?: WebSocket;
 
   private snapshots: SnapshotInterpolator;
+  private prediction?: ClientPrediction;
+  private metrics = new NetworkMetrics();
+  private inputSequence = 0;
+  private lastSnapshotTick = -1;
 
   private controlledPlayers: PlayerId[] = []
 
   private inputSender = new InputSender(() => this.sendInput(), () => this.lobbyState.started);
 
   get diagnostics() {
-    return { ...this.snapshots.diagnostics, queuedInputBytes: this.socket?.bufferedAmount ?? 0 };
+    return { ...this.snapshots.diagnostics, ...this.metrics.diagnostics,
+      ...this.prediction?.diagnostics, predictionActive: this.prediction?.diagnostics.predictionActive ?? false,
+      queuedInputBytes: this.socket?.bufferedAmount ?? 0 };
   }
 
   constructor(
@@ -29,9 +43,10 @@ export class NetworkSource implements StateSource {
     private lobbyState: LobbyState,
     private onMessageCallback: (message: ServerMessage) => void,
     private onStatus: (status: string) => void,
-    interpolation: Partial<InterpolationSettings> = {},
+    interpolation: NetworkPlaybackSettings = {},
   ) {
     this.snapshots = new SnapshotInterpolator(interpolation);
+    if (interpolation.prediction !== false) this.prediction = new ClientPrediction(interpolation.prediction);
   }
   
   start() {
@@ -63,6 +78,8 @@ export class NetworkSource implements StateSource {
   stop() {
     Object.values(this.controllers).forEach(c => c.detach());
     this.inputSender.stop();
+    this.prediction?.clear();
+    this.metrics.clear();
 
     const idleActions = Object.fromEntries(this.controlledPlayers.map((playerId)=>[playerId, IDLE]))
     this.send({ type: 'input', actions: idleActions});
@@ -84,8 +101,12 @@ export class NetworkSource implements StateSource {
     // Back in the lobby: forget the old match so the next one doesn't blend from its last frame
     if (!this.lobbyState.started) {
       this.snapshots.clear();
+      this.prediction?.clear();
+      this.metrics.clear();
+      this.lastSnapshotTick = -1;
     }
-    this.inputSender.changed();
+    if (this.lobbyState.started) this.onInputChanged(false);
+    else this.inputSender.changed();
   }
   private setControlledPlayers(playerIds: PlayerId[]) {
     if (playerIds.join() === this.controlledPlayers.join()) return; // keeps held keys on unrelated lobby updates
@@ -97,20 +118,26 @@ export class NetworkSource implements StateSource {
   // Also called after the key bindings are edited, so they apply straight away
   reloadControls() {
     Object.values(this.controllers).forEach(c => c.detach());
+    this.prediction?.clear();
     const controls = loadControls();
     this.controllers = Object.fromEntries(
       this.controlledPlayers.slice(0, controls.length).map((id, i) => [id,
-        new KeyboardController(controls[i], this.inputSender.changed)])
+        new KeyboardController(controls[i], this.onInputChanged)])
     );
     if (this.socket) Object.values(this.controllers).forEach(c => c.attach());
-    this.inputSender.changed();
+    this.onInputChanged(false);
   }
   private onSnapshotMessage(message: ServerMessage & {type: "snapshot"}){
+    const now = performance.now();
     const next = decodeState(
       new Float64Array(message.state), 
     );
-    const now = performance.now();
+    if (next.match.tick <= this.lastSnapshotTick) return;
+    this.lastSnapshotTick = next.match.tick;
     this.snapshots.push(next, now);
+    this.metrics.snapshot(message.network, now);
+    this.prediction?.input(this.heldInput(), now, this.predictionTick(now));
+    this.prediction?.push(next, message.network, this.lobbyState.playerMapping, now, this.predictionTick(now));
     this.lobbyState.started = true;
   }
   private onErrorMessage(message: ServerMessage & {type: "error"}){
@@ -126,13 +153,38 @@ export class NetworkSource implements StateSource {
     // additional movement behind an earlier packet on a congested connection.
     if (this.socket?.readyState !== WebSocket.OPEN || this.socket.bufferedAmount > 0) return false;
     const actions = Object.fromEntries(Object.entries(this.controllers).map(([id, c])=>([id, c.getAction()])))
-    this.send({ type: 'input', actions });
+    const now = performance.now();
+    const sequence = ++this.inputSequence;
+    this.send({ type: 'input', actions, sequence });
+    this.metrics.sent(sequence, now);
+    this.prediction?.inputSent(sequence);
     // A press and release coalesced into a short kick needs its release sent
     // promptly too, otherwise the server would hold kick until the heartbeat.
-    if (Object.entries(this.controllers).some(([id, controller]) => actions[id].kick && !controller.peekAction().kick))
+    if (Object.entries(this.controllers).some(([id, controller]) => actions[id].kick && !controller.peekHeldAction().kick)) {
+      // The kick packet acknowledges the tap, not the release that still needs
+      // sending. Retain that release in prediction until its own acknowledgement.
+      this.prediction?.input(this.heldInput(), now, this.predictionTick(now), true);
       this.inputSender.changed();
+    }
     return true;
   }
+
+  private heldInput(): ClientAction {
+    return Object.fromEntries(Object.entries(this.controllers).map(([id, controller]) => [id, controller.peekHeldAction()]));
+  }
+
+  private predictionTick(nowMs: number): number {
+    // The arrival clock already trails the server by downstream delay. A full
+    // measured RTT leads it to the estimated tick at which new inputs arrive.
+    return this.lastSnapshotTick < 0 ? 0 : this.snapshots.estimatedTick(nowMs) + this.metrics.rttMs / TICK_MS;
+  }
+
+  private onInputChanged = (measure = true) => {
+    const now = performance.now();
+    this.prediction?.input(this.heldInput(), now, this.predictionTick(now));
+    if (measure) this.metrics.changed(now);
+    this.inputSender.changed();
+  };
   startMatch() { this.send({ 
     type: 'start', 
     lobbyState: {...this.lobbyState, started: true} 
@@ -171,7 +223,9 @@ export class NetworkSource implements StateSource {
   update(_dtMs: number) {}
   currentState(): GameState {
     const now = performance.now();
-    return this.snapshots.sample(now)
-      ?? createState(this.getTeamSizes(), this.lobbyState.rules);
+    const authoritative = this.snapshots.sample(now);
+    this.metrics.frame(this.snapshots.diagnostics.renderTick, now);
+    return this.prediction?.sample(now, this.predictionTick(now))
+      ?? authoritative ?? createState(this.getTeamSizes(), this.lobbyState.rules);
   }
 }
