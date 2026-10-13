@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ACTION_COUNT, decodeAction } from '$lib/engine/actions';
+import { CENTER_Y, PITCH_RIGHT } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
 import { step } from '$lib/engine/step';
 import type { GameState, MatchRules, TeamSizes } from '$lib/engine/types';
@@ -25,7 +26,8 @@ describe('codec', () => {
         s = step(s, s.world.players.map(() => decodeAction(Math.floor(rnd() * ACTION_COUNT))));
         check();
       }
-      s = { ...s, world: { ...s.world, ball: { pos: vec(1.6, 0.5), vel: vec(0.025, 0) } } };
+      // Derived from the pitch so it still goes straight in if the field is resized
+      s = { ...s, world: { ...s.world, ball: { pos: vec(PITCH_RIGHT - 0.1, CENTER_Y), vel: vec(0.025, 0) } } };
       for (let t = 0; t < 400; t++) {
         s = step(s, s.world.players.map(() => decodeAction(0)));
         check();

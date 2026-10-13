@@ -12,7 +12,9 @@ export const CONTACT_GUARD_SETTINGS = {
 // snapshots are valid. Project the drawn positions onto the existing collision
 // constraints. This never advances physics or changes a received snapshot.
 export function guardContacts(world: World): World {
-  const players = world.players.map(player => ({ ...player }));
+  // Separate at base player mass: with kick held a player is 100x the ball, so a ball pinned
+  // against a wall would barely move per pass and the guard couldn't converge.
+  const players = world.players.map(player => ({ ...player, kickHeld: false }));
   const ball = { ...world.ball };
   const bodies = [...players, ball];
   let changed = false;
@@ -30,7 +32,10 @@ export function guardContacts(world: World): World {
   if (!changed) return world;
   // Only presentation positions change. Keep velocities, kick state and all
   // match decisions exactly as supplied by the authoritative snapshots.
-  players.forEach((player, index) => { player.vel = world.players[index].vel; });
+  players.forEach((player, index) => {
+    player.vel = world.players[index].vel;
+    player.kickHeld = world.players[index].kickHeld;
+  });
   ball.vel = world.ball.vel;
   return { players, ball };
 }
