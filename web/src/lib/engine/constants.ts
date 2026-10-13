@@ -38,8 +38,8 @@ export const POST_ELASTICITY = 0.8
 //   Ball on pitch:   x ∈ [0.1, 1.7]  y ∈ [0.1, 0.9]
 //   Ball in a goal:  x ∈ [0, 0.1] or [1.7, 1.8],  y ∈ [0.35, 0.65]
 
-export const WORLD_WIDTH = 1.8 //2.2
-export const WORLD_HEIGHT = 1 //1.3
+export const WORLD_WIDTH = 2.2
+export const WORLD_HEIGHT = 1.3
 
 // Lines sit one ball radius outside the ball's area, where its edge touches them.
 export const BALL_MARGIN = 0.1
