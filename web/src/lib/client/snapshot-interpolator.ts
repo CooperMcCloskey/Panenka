@@ -3,6 +3,7 @@ import type { Body, GameState } from '$lib/engine/types';
 import { SnapshotClock } from './snapshot-clock';
 import { AdaptiveDelay, type AdaptiveDelaySettings } from './adaptive-delay';
 import { guardContacts } from './contact-guard';
+import { snapshotWasReset } from './snapshot-reset';
 
 export type InterpolationSettings = {
   delayMs: number;
@@ -14,7 +15,7 @@ export type InterpolationSettings = {
   adaptiveDelay: false | Partial<AdaptiveDelaySettings>;
 };
 
-// Start with three snapshots; adaptive playback sheds delay on steady links.
+// Fixed playback defaults to three snapshots; adaptive playback starts smaller.
 export const INTERPOLATION_SETTINGS: Readonly<InterpolationSettings> = {
   delayMs: TICK_MS * SNAPSHOT_NUM * 3,
   maxSnapshots: 32,
@@ -42,7 +43,10 @@ export class SnapshotInterpolator {
     this.settings = { ...INTERPOLATION_SETTINGS, ...options };
     // An explicitly supplied delay keeps its previous fixed-delay meaning.
     const adaptive = options.adaptiveDelay ?? (options.delayMs === undefined ? this.settings.adaptiveDelay : false);
-    if (adaptive !== false) this.delay = new AdaptiveDelay(this.settings.delayMs, adaptive);
+    if (adaptive !== false) {
+      if (options.delayMs === undefined) this.settings.delayMs = SNAPSHOT_NUM * TICK_MS * 1.5;
+      this.delay = new AdaptiveDelay(this.settings.delayMs, adaptive);
+    }
     this.targetDelayMs = this.settings.delayMs;
     this.clock = new SnapshotClock(this.settings.clockWindowMs);
   }
@@ -53,9 +57,13 @@ export class SnapshotInterpolator {
       playbackDelayMs: this.lastSampleMs === undefined ? 0
         : (this.clock.tickAt(this.lastSampleMs) - this.renderTick) * TICK_MS,
       jitterMs: this.clock.jitterMs,
+      bufferJitterMs: this.clock.bufferJitterMs,
+      renderTick: this.renderTick,
       underruns: this.underruns,
     };
   }
+
+  estimatedTick(nowMs: number): number { return this.clock.tickAt(nowMs); }
 
   clear() {
     this.snapshots = [];
@@ -72,7 +80,7 @@ export class SnapshotInterpolator {
     if (latest && state.match.tick <= latest.match.tick) return;
     // A kickoff or a changed lineup must appear immediately, without blending
     // old player positions into their new starting positions.
-    if (latest && (this.worldWasReset(latest, state)
+    if (latest && (snapshotWasReset(latest, state)
       || (state.match.tick - latest.match.tick) * TICK_MS > this.settings.resyncAfterMs)) this.clear();
 
     if (this.snapshots.length === 0) {
@@ -90,7 +98,7 @@ export class SnapshotInterpolator {
 
     const elapsed = Math.max(0, nowMs - (this.lastSampleMs ?? nowMs));
     this.lastSampleMs = nowMs;
-    this.targetDelayMs = this.delay?.sample(this.clock.jitterMs, nowMs) ?? this.settings.delayMs;
+    this.targetDelayMs = this.delay?.sample(this.clock.bufferJitterMs, nowMs) ?? this.settings.delayMs;
     const target = this.clock.tickAt(nowMs) - this.targetDelayMs / TICK_MS;
     const expected = this.renderTick + elapsed / TICK_MS;
     const error = target - expected;
@@ -107,7 +115,10 @@ export class SnapshotInterpolator {
     }
     // During a network gap, hold at the newest known position. Never extrapolate.
     const exhausted = this.renderTick > latest.match.tick + 1e-8;
-    if (exhausted && !this.exhausted) this.underruns++;
+    if (exhausted && !this.exhausted) {
+      this.underruns++;
+      this.delay?.underrun(nowMs);
+    }
     this.exhausted = exhausted;
     this.renderTick = Math.min(this.renderTick, latest.match.tick);
 
@@ -125,14 +136,5 @@ export class SnapshotInterpolator {
         players: b.world.players.map((player, i) => blend(a.world.players[i], player)),
       }),
     };
-  }
-
-  private worldWasReset(previous: GameState, next: GameState): boolean {
-    return previous.world.players.length !== next.world.players.length
-      || previous.match.teamSizes.blue !== next.match.teamSizes.blue
-      || previous.match.teamSizes.orange !== next.match.teamSizes.orange
-      || (next.match.phase.kind === 'countdown'
-        && (previous.match.phase.kind !== 'countdown'
-          || next.match.phase.ticksLeft > previous.match.phase.ticksLeft));
   }
 }

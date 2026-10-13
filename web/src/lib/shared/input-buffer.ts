@@ -6,6 +6,15 @@ export class InputBuffer {
   private actions = new Map<string, Action>();
   private kicks = new Set<string>();
 
+  clear() {
+    this.actions.clear();
+    this.kicks.clear();
+  }
+
+  peek(ids: readonly string[]): Action[] {
+    return ids.map(id => this.actions.get(id) ?? IDLE);
+  }
+
   set(id: string, action: Action) {
     this.actions.set(id, action);
     if (action.kick) this.kicks.add(id);

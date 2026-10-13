@@ -6,6 +6,7 @@ export class TickScheduler {
   private timer?: ReturnType<typeof setTimeout>;
   private running = false;
   private deadlineMs = 0;
+  public latenessMs = 0;
 
   constructor(private update: () => void, private intervalMs = TICK_MS) {}
 
@@ -31,6 +32,7 @@ export class TickScheduler {
         this.schedule();
         return;
       }
+      this.latenessMs = Math.max(0, performance.now() - this.deadlineMs);
       this.update(); // the room's accumulator handles any missed simulation ticks
       const now = performance.now();
       this.deadlineMs += this.intervalMs * Math.max(1,

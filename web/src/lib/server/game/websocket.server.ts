@@ -53,6 +53,7 @@ function connectSocket(socket: WebSocket): void {
   function pong(data: Buffer<ArrayBufferLike>) {
     if (pingSentAt === undefined || data.toString() !== pingPayload) return;
     const pingMs = performance.now() - pingSentAt;
+    if (client) client.rttMs = pingMs;
     pingSentAt = undefined;
     alive = true;
     missedPings = 0;
@@ -90,7 +91,7 @@ function connectSocket(socket: WebSocket): void {
         return;
       } 
       else if (message.type === 'input') {
-        if(isLegalInputMessage(message)) room.input(token, message.actions);
+        if(isLegalInputMessage(message)) room.input(token, message.actions, message.sequence);
         else socket.close(1008, 'Illegal inputs');
         return;
       }

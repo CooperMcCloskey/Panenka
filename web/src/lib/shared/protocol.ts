@@ -10,6 +10,7 @@ export type Client = {
   socket?: WebSocket,
   controlledPlayers: PlayerId[],
   username: string,
+  rttMs?: number,
 }
 export type PublicClient = {
   username: string
@@ -18,6 +19,16 @@ export type PublicClient = {
 
 export type LobbyPlayers = Record<PlayerId, LobbyPlayer>
 export type ClientAction = Record<PlayerId, Action>
+
+// Transport metadata stays outside the physics state and its exact codec.
+export type InputAck = { sequence: number; tick: number; queueMs: number };
+export type SnapshotNetwork = {
+  heldActions: Action[];
+  inputAck?: InputAck;
+  rttMs?: number;
+  serverFrameMs: number;
+  serverTickDelayMs: number;
+};
 
 export type LobbyState = {
   rev: number,
@@ -46,7 +57,7 @@ export const NEW_LOBBY_STATE: ()=>LobbyState = () => ({
 export type ClientMessage =
   | { type: 'join', code: string, token: string }
   | { type: 'start' , lobbyState: LobbyState }
-  | { type: 'input', actions: ClientAction}
+  | { type: 'input', actions: ClientAction, sequence?: number }
   | { type: 'addPlayer', player: LobbyPlayer, rev: number }
   | { type: 'removePlayer', playerId: string, rev: number }
   | { type: 'switchTeam', playerId: string, rev: number }
@@ -59,7 +70,7 @@ export type ServerMessage =
       lobbyState: LobbyState;
       controlledPlayerIds: string[]; // the player IDs this client controls
     }
-  | { type: 'snapshot', state: number[] }
+  | { type: 'snapshot', state: number[], network?: SnapshotNetwork }
   | { type: 'error', message: string }
 
 export function isLegalInputMessage(value: unknown): boolean {
@@ -68,6 +79,7 @@ export function isLegalInputMessage(value: unknown): boolean {
 
   // { type: 'input', actions: { [playerId]: Action } }
   if (!isObject(value) || value.type !== 'input' || !isObject(value.actions)) return false;
+  if (value.sequence !== undefined && (!Number.isSafeInteger(value.sequence) || (value.sequence as number) < 1)) return false;
 
   return Object.values(value.actions).every(a =>
     isObject(a)

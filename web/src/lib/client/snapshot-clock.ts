@@ -7,11 +7,15 @@ export class SnapshotClock {
   private observations: { receivedAtMs: number; offsetMs: number }[] = [];
   private offsetMs = 0;
   private spreadMs = 0;
+  private percentileMs = 0;
 
   /** Variation in snapshot delivery offsets over the current observation window. */
   public get jitterMs(): number {
     return this.spreadMs;
   }
+
+  /** Cover ordinary delivery variation without retaining every isolated spike. */
+  get bufferJitterMs(): number { return this.percentileMs; }
 
   constructor(private windowMs = 2000) {}
 
@@ -19,6 +23,7 @@ export class SnapshotClock {
     this.observations = [];
     this.offsetMs = 0;
     this.spreadMs = 0;
+    this.percentileMs = 0;
   }
 
   observe(tick: number, receivedAtMs: number) {
@@ -32,6 +37,8 @@ export class SnapshotClock {
     }
     this.offsetMs = earliest;
     this.spreadMs = latest - earliest;
+    const offsets = this.observations.map(observation => observation.offsetMs).sort((a, b) => a - b);
+    this.percentileMs = offsets[Math.ceil(offsets.length * 0.95) - 1] - earliest;
   }
 
   tickAt(nowMs: number): number {

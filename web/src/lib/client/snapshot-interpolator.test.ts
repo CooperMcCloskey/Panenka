@@ -119,7 +119,7 @@ describe('server snapshot interpolation', () => {
   });
 
   it('ignores duplicate and old snapshots, and preserves the latest authoritative match metadata', () => {
-    const buffer = new SnapshotInterpolator();
+    const buffer = new SnapshotInterpolator({ adaptiveDelay: false });
     buffer.push(snapshot(0), 0);
     const newest = snapshot(2);
     newest.match.score.blue = 1;
@@ -218,7 +218,7 @@ describe('NetworkSource authoritative playback', () => {
       const before = source.currentState();
       now = 20;
       for (const listener of listeners.get('keydown')!) listener({ code: 'KeyD' });
-      expect(socket.messages.at(-1)).toEqual({ type: 'input', actions: { blue: { moveX: 1, moveY: 0, kick: false } } });
+      expect(socket.messages.at(-1)).toMatchObject({ type: 'input', actions: { blue: { moveX: 1, moveY: 0, kick: false } } });
       const after = source.currentState();
       expect(after.world.players[1].pos).toEqual(before.world.players[1].pos);
       expect(after.world.players[0].pos).toEqual(before.world.players[0].pos);
@@ -226,7 +226,7 @@ describe('NetworkSource authoritative playback', () => {
       expect(after.match).toEqual(before.match);
       now = 40;
       for (const listener of listeners.get('blur')!) listener({ code: '' });
-      expect(socket.messages.at(-1)).toEqual({ type: 'input', actions: { blue: { moveX: 0, moveY: 0, kick: false } } });
+      expect(socket.messages.at(-1)).toMatchObject({ type: 'input', actions: { blue: { moveX: 0, moveY: 0, kick: false } } });
     } finally { source.stop(); }
     expect([...listeners.values()].every(handlers => handlers.size === 0)).toBe(true);
   });
@@ -256,7 +256,7 @@ describe('NetworkSource authoritative playback', () => {
       vi.advanceTimersByTime(100);
       source.update(100);
       expect(socket.messages.filter(message => message.type === 'input').length).toBeGreaterThan(0);
-      expect(socket.messages.filter(message => message.type === 'input')[0]).toEqual({
+      expect(socket.messages.filter(message => message.type === 'input')[0]).toMatchObject({
         type: 'input', actions: { blue: { moveX: 1, moveY: 0, kick: false } },
       });
       expect(source.currentState().world.players[0].pos.x).toBe(0.3);

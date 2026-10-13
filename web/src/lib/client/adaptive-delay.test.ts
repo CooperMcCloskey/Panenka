@@ -3,6 +3,7 @@ import { TICK_MS } from '$lib/engine/constants';
 import { createState } from '$lib/engine/state';
 import { vec } from '$lib/engine/vec';
 import { SnapshotInterpolator } from './snapshot-interpolator';
+import { AdaptiveDelay } from './adaptive-delay';
 
 function play(tick: number) {
   const state = createState({ blue: 1, orange: 1 }, { kind: 'goals', target: 3 });
@@ -50,8 +51,8 @@ describe('adaptive snapshot playback', () => {
     const adaptive = run(true, jitter);
     const fixed = run(false, jitter);
     expect(adaptive.lateStalls).toBeLessThan(fixed.lateStalls);
-    expect(adaptive.samples.find(sample => sample.now === 9000)!.target).toBeGreaterThan(80);
-    expect(adaptive.diagnostics.playbackDelayMs).toBeLessThan(40);
+    expect(adaptive.samples.find(sample => sample.now === 9000)!.target).toBeGreaterThan(60);
+    expect(adaptive.diagnostics.playbackDelayMs).toBeLessThan(20);
     expect(adaptive.diagnostics.targetDelayMs).toBeLessThanOrEqual(100);
   });
 
@@ -65,5 +66,24 @@ describe('adaptive snapshot playback', () => {
     fixed.push(play(1), 90);
     fixed.sample(90);
     expect(fixed.diagnostics.targetDelayMs).toBe(20);
+  });
+
+  it('starts at 25 ms, ignores isolated outliers and recovers quickly after a delivery spike', () => {
+    const buffer = new SnapshotInterpolator();
+    buffer.push(play(0), 0);
+    buffer.sample(0);
+    expect(buffer.diagnostics.targetDelayMs).toBe(25);
+    const isolated = run(true, tick => tick === 300 ? 60 : 0);
+    expect(isolated.samples.find(sample => sample.now === 7000)!.target).toBeLessThan(30);
+    expect(isolated.diagnostics.playbackDelayMs).toBeLessThan(20);
+  });
+
+  it('adds reserve on an underrun, holds it briefly, then removes it on a steady link', () => {
+    const delay = new AdaptiveDelay(TICK_MS);
+    delay.sample(0, 0);
+    delay.underrun(0);
+    expect(delay.sample(0, 500)).toBeCloseTo(2 * TICK_MS);
+    for (let now = 1000; now <= 2500; now += 100) delay.sample(0, now);
+    expect(delay.sample(0, 2600)).toBeCloseTo(TICK_MS);
   });
 });
